@@ -4,169 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>中瑞医疗 · 6月拍摄项目推进方案</title>
-<style>
-  :root {
-    --bg: #FAFAF7;
-    --surface: #FFFFFF;
-    --surface-2: #F4F2EC;
-    --border: rgba(0,0,0,0.08);
-    --border-strong: rgba(0,0,0,0.18);
-    --text: #1A1A1A;
-    --text-2: #5F5E5A;
-    --text-3: #888780;
-    --accent: #D85A30;
-    --accent-soft: #FAECE7;
-    --accent-dark: #993C1D;
-    --kb-blue: #185FA5;
-    --kb-blue-soft: #E6F1FB;
-    --kb-teal: #0F6E56;
-    --kb-teal-soft: #E1F5EE;
-    --kb-purple: #534AB7;
-    --kb-purple-soft: #EEEDFE;
-    --kb-amber: #BA7517;
-    --kb-amber-soft: #FAEEDA;
-    --radius: 10px;
-    --radius-lg: 14px;
-  }
-  * { box-sizing: border-box; }
-  html, body {
-    margin: 0; padding: 0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
-    font-size: 14px;
-    line-height: 1.6;
-  }
-  .app { max-width: 1400px; margin: 0 auto; padding: 28px 32px 80px; }
-  .header { display: flex; align-items: flex-end; justify-content: space-between; padding-bottom: 20px; margin-bottom: 24px; border-bottom: 1px solid var(--border); }
-  .header h1 { margin: 0 0 4px; font-size: 22px; font-weight: 600; letter-spacing: 0.5px; }
-  .header .sub { color: var(--text-2); font-size: 13px; }
-  .header-actions { display: flex; gap: 8px; align-items: center; }
-  .sync-status { font-size: 12px; color: var(--text-3); margin-right: 8px; }
-  .sync-status.saving { color: var(--accent); }
-  .sync-status.saved { color: #0F6E56; }
-  .sync-status.error { color: #A32D2D; }
-  .tabs { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid var(--border); }
-  .tab { padding: 10px 18px; border: none; background: transparent; cursor: pointer; font-size: 14px; color: var(--text-2); border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500; transition: all .15s; }
-  .tab:hover { color: var(--text); }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .panel { display: none; }
-  .panel.active { display: block; }
-  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); border-radius: 8px; font-size: 13px; cursor: pointer; transition: all .15s; font-family: inherit; }
-  .btn:hover { background: var(--surface-2); }
-  .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
-  .btn-primary:hover { background: var(--accent-dark); }
-  .btn-ghost { border-color: transparent; color: var(--text-2); }
-  .btn-ghost:hover { background: var(--surface-2); color: var(--text); }
-  .btn-sm { padding: 4px 8px; font-size: 12px; }
-  .btn-danger { color: #A32D2D; }
-  .btn-danger:hover { background: #FCEBEB; }
-  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
-  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
-  .stat .label { font-size: 12px; color: var(--text-3); margin-bottom: 6px; }
-  .stat .value { font-size: 22px; font-weight: 600; }
-  .stat .meta { font-size: 12px; color: var(--text-2); margin-top: 4px; }
-  .section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 22px; margin-bottom: 18px; }
-  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-  .section-title { font-size: 16px; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 10px; }
-  .pill { display: inline-block; padding: 2px 9px; border-radius: 11px; font-size: 12px; font-weight: 500; }
-  .pill-kb { background: var(--kb-blue-soft); color: var(--kb-blue); }
-  .pill-mm { background: var(--kb-purple-soft); color: var(--kb-purple); }
-  .pill-cs { background: var(--kb-teal-soft); color: var(--kb-teal); }
-  .module-list { display: flex; flex-direction: column; gap: 10px; }
-  .module { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; background: var(--surface); transition: border-color .15s; }
-  .module:hover { border-color: var(--border-strong); }
-  .module-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .module-title { font-weight: 500; font-size: 14px; flex: 1; min-width: 0; word-break: break-word; }
-  .module-title[contenteditable="true"]:focus, .module-body[contenteditable="true"]:focus { outline: 1px dashed var(--accent); outline-offset: 2px; background: var(--accent-soft); padding: 2px 4px; border-radius: 4px; }
-  .module-actions { display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
-  .module:hover .module-actions { opacity: 1; }
-  .module-body { margin-top: 8px; color: var(--text-2); font-size: 13px; line-height: 1.7; }
-  .checklist { list-style: none; padding: 0; margin: 8px 0 0; }
-  .checklist li { display: flex; align-items: flex-start; gap: 8px; padding: 5px 0; font-size: 13px; }
-  .checklist input[type="checkbox"] { margin-top: 4px; accent-color: var(--accent); }
-  .checklist .ck-text { flex: 1; color: var(--text-2); cursor: text; }
-  .checklist .ck-text.done { text-decoration: line-through; color: var(--text-3); }
-  .checklist .ck-del { border: none; background: transparent; color: var(--text-3); cursor: pointer; font-size: 12px; opacity: 0; padding: 0 4px; }
-  .checklist li:hover .ck-del { opacity: 1; }
-  .ck-add { margin-top: 6px; display: flex; gap: 6px; }
-  .ck-add input { flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: inherit; }
-  .ck-add input:focus { outline: none; border-color: var(--accent); }
-  .cal-controls { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
-  .view-switch { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
-  .view-switch button { border: none; background: transparent; padding: 7px 14px; cursor: pointer; font-size: 13px; color: var(--text-2); font-family: inherit; border-right: 1px solid var(--border-strong); }
-  .view-switch button:last-child { border-right: none; }
-  .view-switch button.active { background: var(--text); color: white; }
-  .month-nav { display: flex; align-items: center; gap: 8px; }
-  .month-nav .label { font-size: 15px; font-weight: 600; min-width: 130px; text-align: center; }
-  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-2); flex-wrap: wrap; }
-  .legend-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
-  .calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-  .cal-head { background: var(--surface-2); padding: 8px; text-align: center; font-size: 12px; color: var(--text-2); font-weight: 500; }
-  .cal-day { background: var(--surface); min-height: 110px; padding: 6px 8px; position: relative; cursor: pointer; transition: background .12s; }
-  .cal-day:hover { background: var(--surface-2); }
-  .cal-day.other { background: #FAFAF7; }
-  .cal-day.other .day-num { color: var(--text-3); }
-  .cal-day.today { background: var(--accent-soft); }
-  .cal-day.today .day-num { color: var(--accent); font-weight: 700; }
-  .day-num { font-size: 12px; color: var(--text-2); margin-bottom: 4px; font-weight: 500; }
-  .cal-events { display: flex; flex-direction: column; gap: 2px; }
-  .cal-event { font-size: 11px; padding: 2px 6px; border-radius: 4px; color: white; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-  .ev-kb { background: var(--kb-blue); }
-  .ev-mm { background: var(--kb-purple); }
-  .ev-cs { background: var(--kb-teal); }
-  .ev-prep { background: var(--kb-amber); }
-  .ev-publish { background: var(--accent); }
-  .gantt-wrapper { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-  .gantt { min-width: 1200px; }
-  .gantt-header { display: grid; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface-2); z-index: 2; }
-  .gantt-label-col { background: var(--surface-2); border-right: 1px solid var(--border); padding: 8px 12px; font-size: 12px; color: var(--text-2); font-weight: 500; }
-  .gantt-row { display: grid; border-bottom: 1px solid var(--border); min-height: 44px; align-items: center; }
-  .gantt-row:last-child { border-bottom: none; }
-  .gantt-row .gantt-label-col { background: var(--surface); font-size: 13px; color: var(--text); font-weight: 400; }
-  .gantt-track { position: relative; height: 44px; border-right: 1px solid var(--border); }
-  .gantt-track.weekend { background: rgba(0,0,0,0.025); }
-  .gantt-track.today { background: var(--accent-soft); }
-  .gantt-bar { position: absolute; top: 50%; transform: translateY(-50%); height: 22px; border-radius: 4px; color: white; font-size: 11px; padding: 0 6px; display: flex; align-items: center; cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 100; }
-  .modal-bg.show { display: flex; }
-  .modal { background: var(--surface); border-radius: var(--radius-lg); width: 560px; max-width: 92vw; max-height: 88vh; overflow-y: auto; padding: 22px 24px; }
-  .modal h3 { margin: 0 0 16px; font-size: 17px; font-weight: 600; }
-  .form-row { margin-bottom: 12px; }
-  .form-row label { display: block; font-size: 12px; color: var(--text-2); margin-bottom: 4px; }
-  .form-row input, .form-row select, .form-row textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 13px; font-family: inherit; background: var(--surface); color: var(--text); }
-  .form-row textarea { min-height: 70px; resize: vertical; }
-  .form-row input:focus, .form-row select:focus, .form-row textarea:focus { outline: none; border-color: var(--accent); }
-  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-  .event-list { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
-  .event-row { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .event-row-left { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
-  .ev-tag { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-  .event-row .title { font-weight: 500; font-size: 13px; }
-  .event-row .meta { font-size: 12px; color: var(--text-3); }
-  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
-  .info-line { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
-  .info-line:last-child { border-bottom: none; }
-  .info-line .k { color: var(--text-2); }
-  .info-line .v { color: var(--text); font-weight: 500; }
-  .steps { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
-  .step { flex: 1; min-width: 160px; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; background: var(--surface); }
-  .step-num { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: white; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
-  .step-title { font-weight: 500; font-size: 13px; margin-bottom: 6px; }
-  .step-body { font-size: 12.5px; color: var(--text-2); line-height: 1.65; }
-  .empty { text-align: center; padding: 28px 16px; color: var(--text-3); font-size: 13px; }
-  .feishu-link { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; background: var(--kb-blue-soft); color: var(--kb-blue); border-radius: 12px; font-size: 12px; text-decoration: none; margin-top: 4px; }
-  .feishu-link:hover { background: #B5D4F4; }
-  .loading-screen { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-  .loading-screen.hidden { display: none; }
-  .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @media print {
-    .header-actions, .tabs, .cal-controls .view-switch, .module-actions, .ck-del, .ck-add, .btn { display: none !important; }
-    .app { padding: 12px; }
-    .section { break-inside: avoid; }
-  }
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
@@ -183,6 +21,9 @@
     </div>
     <div class="header-actions">
       <span class="sync-status" id="syncStatus">就绪</span>
+      <button class="btn btn-ghost" onclick="exportData()">导出</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('importFile').click()">导入</button>
+      <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData(event)">
       <button class="btn btn-ghost" onclick="window.print()">打印</button>
       <button class="btn btn-ghost" onclick="logout()">退出</button>
     </div>
@@ -195,12 +36,11 @@
     <button class="tab" data-tab="models">模特预约</button>
   </div>
 
+  <!-- ========== 总览 ========== -->
   <div class="panel active" id="panel-overview">
     <div class="summary-grid" id="summary-grid"></div>
     <div class="section">
-      <div class="section-header">
-        <h2 class="section-title">月度产出目标</h2>
-      </div>
+      <div class="section-header"><h2 class="section-title">月度产出目标</h2></div>
       <div class="grid-3" id="target-grid"></div>
     </div>
     <div class="section">
@@ -211,15 +51,14 @@
       <div class="module-list" id="milestone-list"></div>
     </div>
     <div class="section">
-      <div class="section-header">
-        <h2 class="section-title">本月备注 / 风险点</h2>
-      </div>
+      <div class="section-header"><h2 class="section-title">本月备注 / 风险点</h2></div>
       <div class="module">
         <div class="module-body" contenteditable="true" id="overview-notes" oninput="markDirty()"></div>
       </div>
     </div>
   </div>
 
+  <!-- ========== 排期日历 ========== -->
   <div class="panel" id="panel-calendar">
     <div class="cal-controls">
       <div class="view-switch">
@@ -233,40 +72,40 @@
         <button class="btn btn-sm" onclick="goToMonth(2026, 5)">5月</button>
         <button class="btn btn-sm" onclick="goToMonth(2026, 6)">6月</button>
       </div>
-      <div class="legend">
-        <span><span class="legend-dot" style="background:var(--kb-amber)"></span>筹备</span>
-        <span><span class="legend-dot" style="background:var(--kb-blue)"></span>口播</span>
-        <span><span class="legend-dot" style="background:var(--kb-purple)"></span>美美展示</span>
-        <span><span class="legend-dot" style="background:var(--kb-teal)"></span>客户见证</span>
-        <span><span class="legend-dot" style="background:var(--accent)"></span>发布</span>
+      <div class="legend-wrap">
+        <div class="legend" id="category-legend"></div>
+        <button class="btn btn-sm btn-ghost" onclick="openCategoryEditor()">⚙ 编辑分类</button>
       </div>
     </div>
-    <div id="month-view">
-      <div class="calendar" id="calendar"></div>
-    </div>
-    <div id="gantt-view" style="display:none;">
-      <div class="gantt-wrapper">
-        <div class="gantt" id="gantt"></div>
-      </div>
-    </div>
+    <div id="month-view"><div class="calendar" id="calendar"></div></div>
+    <div id="gantt-view" style="display:none;"><div class="gantt-wrapper"><div class="gantt" id="gantt"></div></div></div>
+    <div style="margin-top:10px; color: var(--text-3); font-size: 12px;">💡 可以直接拖拽事项到任意日期</div>
   </div>
 
+  <!-- ========== 三类内容流程 ========== -->
   <div class="panel" id="panel-workflow">
-    <div class="section">
+    <div class="tabs sub-tabs" id="workflow-tabs">
+      <button class="tab active" data-wftab="all">全部</button>
+      <button class="tab" data-wftab="kb">专业口播</button>
+      <button class="tab" data-wftab="mm">美美展示</button>
+      <button class="tab" data-wftab="cs">客户见证</button>
+    </div>
+
+    <div class="section" data-wf-section="kb">
       <div class="section-header">
         <h2 class="section-title"><span class="pill pill-kb">专业口播</span><span>· 每周 2 条 · 院内</span></h2>
         <button class="btn btn-sm" onclick="addWorkflowItem('kb')">+ 添加要点</button>
       </div>
       <div class="module-list" id="workflow-kb"></div>
     </div>
-    <div class="section">
+    <div class="section" data-wf-section="mm">
       <div class="section-header">
         <h2 class="section-title"><span class="pill pill-mm">美美展示</span><span>· 每周 2 条 · 院内+外景 · 一天 3-7 条</span></h2>
         <button class="btn btn-sm" onclick="addWorkflowItem('mm')">+ 添加要点</button>
       </div>
       <div class="module-list" id="workflow-mm"></div>
     </div>
-    <div class="section">
+    <div class="section" data-wf-section="cs">
       <div class="section-header">
         <h2 class="section-title"><span class="pill pill-cs">客户见证</span><span>· 每周 3 条 · 院内</span></h2>
         <button class="btn btn-sm" onclick="addWorkflowItem('cs')">+ 添加要点</button>
@@ -275,47 +114,55 @@
     </div>
   </div>
 
+  <!-- ========== 模特预约 ========== -->
   <div class="panel" id="panel-models">
     <div class="section">
       <div class="section-header">
         <h2 class="section-title">模特预定 SOP</h2>
+        <button class="btn btn-sm" onclick="addModelSop()">+ 添加步骤</button>
       </div>
-      <div class="steps">
-        <div class="step"><div class="step-num">1</div><div class="step-title">提前 3-7 天预定</div><div class="step-body">下一个拍摄日的模特需提前 3-7 天确认档期</div></div>
-        <div class="step"><div class="step-num">2</div><div class="step-title">预沟通与熟悉</div><div class="step-body">拍摄前与模特进行一轮远程沟通</div></div>
-        <div class="step"><div class="step-num">3</div><div class="step-title">脚本提前到位</div><div class="step-body">脚本提前一天发给模特让其有时间消化</div></div>
-        <div class="step"><div class="step-num">4</div><div class="step-title">当日严格按画面拍</div><div class="step-body">按对标分镜逐条拍摄，不临场起意</div></div>
-      </div>
+      <div class="steps" id="model-sop-list"></div>
     </div>
+
     <div class="section">
       <div class="section-header">
         <h2 class="section-title">本月模特档期</h2>
-        <button class="btn btn-sm" onclick="addModelBooking()">+ 新增预约</button>
       </div>
-      <div class="module-list" id="model-list"></div>
+      <div class="cal-controls" style="margin-bottom: 12px;">
+        <div></div>
+        <div class="month-nav">
+          <button class="btn btn-sm" onclick="changeMmonth(-1)">‹ 上月</button>
+          <div class="label" id="mm-month-label"></div>
+          <button class="btn btn-sm" onclick="changeMmonth(1)">下月 ›</button>
+        </div>
+        <div></div>
+      </div>
+      <div class="calendar" id="model-calendar"></div>
     </div>
-    <div class="section">
+
+    <div class="section" id="model-pool-section">
       <div class="section-header">
         <h2 class="section-title">备选模特库</h2>
         <button class="btn btn-sm" onclick="addModelPool()">+ 新增模特</button>
       </div>
-      <div class="module-list" id="model-pool"></div>
+      <div class="model-grid" id="model-pool"></div>
     </div>
   </div>
 </div>
 
+<!-- =============== Day modal (排期日历) =============== -->
 <div class="modal-bg" id="modal-bg">
   <div class="modal">
     <h3 id="modal-title">日期详情</h3>
     <div id="modal-day-events"></div>
-    <hr style="border: none; border-top: 1px solid var(--border); margin: 18px 0;">
+    <hr class="div">
     <h3 style="font-size:14px; margin-bottom:10px;">添加新内容</h3>
-    <div class="form-row"><label>类型</label><select id="m-type"><option value="kb">专业口播</option><option value="mm">美美展示</option><option value="cs">客户见证</option><option value="prep">筹备</option><option value="publish">发布</option></select></div>
+    <div class="form-row"><label>类型</label><select id="m-type"></select></div>
     <div class="form-row"><label>标题</label><input type="text" id="m-title"></div>
     <div class="form-row"><label>时间段</label><input type="text" id="m-time" placeholder="例如：14:00-17:00"></div>
     <div class="form-row"><label>地点</label><input type="text" id="m-location"></div>
     <div class="form-row"><label>负责人 / 模特</label><input type="text" id="m-owner"></div>
-    <div class="form-row"><label>对标飞书视图 URL（可选）</label><input type="text" id="m-feishu" placeholder="贴一个飞书表筛选好的视图链接"></div>
+    <div class="form-row"><label>对标飞书视图 URL（可选）</label><input type="text" id="m-feishu"></div>
     <div class="form-row"><label>备注</label><textarea id="m-notes"></textarea></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">取消</button>
@@ -324,23 +171,113 @@
   </div>
 </div>
 
+<!-- =============== Edit event modal =============== -->
 <div class="modal-bg" id="edit-modal-bg">
   <div class="modal">
     <h3>编辑内容</h3>
     <input type="hidden" id="e-id">
-    <div class="form-row"><label>类型</label><select id="e-type"><option value="kb">专业口播</option><option value="mm">美美展示</option><option value="cs">客户见证</option><option value="prep">筹备</option><option value="publish">发布</option></select></div>
+    <div class="form-row"><label>类型</label><select id="e-type"></select></div>
     <div class="form-row"><label>日期</label><input type="date" id="e-date-input"></div>
     <div class="form-row"><label>标题</label><input type="text" id="e-title"></div>
     <div class="form-row"><label>时间段</label><input type="text" id="e-time"></div>
     <div class="form-row"><label>地点</label><input type="text" id="e-location"></div>
     <div class="form-row"><label>负责人 / 模特</label><input type="text" id="e-owner"></div>
-    <div class="form-row"><label>对标飞书视图 URL（可选）</label><input type="text" id="e-feishu" placeholder="贴一个飞书表筛选好的视图链接"></div>
+    <div class="form-row"><label>对标飞书视图 URL</label><input type="text" id="e-feishu"></div>
     <div class="form-row"><label>备注</label><textarea id="e-notes"></textarea></div>
     <div class="modal-actions">
       <button class="btn btn-danger" onclick="deleteEvent()">删除</button>
       <div style="flex:1"></div>
       <button class="btn" onclick="closeEditModal()">取消</button>
       <button class="btn btn-primary" onclick="saveEditEvent()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- =============== Category editor modal =============== -->
+<div class="modal-bg" id="cat-modal-bg">
+  <div class="modal" style="width: 520px;">
+    <h3>编辑分类</h3>
+    <div style="color: var(--text-3); font-size: 12px; margin-bottom: 12px;">改名、改色、增加、删除分类</div>
+    <div id="cat-editor-list"></div>
+    <button class="btn btn-sm" onclick="addCategory()" style="margin-top: 10px;">+ 新增分类</button>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeCategoryEditor()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- =============== Model booking day modal =============== -->
+<div class="modal-bg" id="mm-day-modal-bg">
+  <div class="modal" style="width: 480px;">
+    <h3 id="mm-day-title">日预约</h3>
+    <div id="mm-day-bookings"></div>
+    <hr class="div">
+    <h3 style="font-size:14px; margin-bottom:10px;">新增预约</h3>
+    <div class="form-row"><label>关联模特</label><select id="mb-model-id"></select></div>
+    <div class="form-row"><label>用途</label>
+      <select id="mb-purpose">
+        <option>客户见证</option>
+        <option>美美展示</option>
+        <option>专业口播</option>
+        <option>其他</option>
+      </select>
+    </div>
+    <div class="form-row"><label>状态</label>
+      <select id="mb-status">
+        <option>待确认</option>
+        <option>已确认</option>
+        <option>已完成</option>
+        <option>已取消</option>
+      </select>
+    </div>
+    <div class="form-row"><label>备注</label><textarea id="mb-notes"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeMmDayModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveNewBooking()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- =============== Booking action chooser =============== -->
+<div class="modal-bg" id="booking-action-bg">
+  <div class="modal" style="width: 380px;">
+    <h3>查看模特详情</h3>
+    <div style="color: var(--text-2); font-size: 13px; margin-bottom: 16px;" id="booking-action-name">—</div>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <button class="btn btn-primary" style="width:100%;" onclick="bookingAction('jump')">↪ 跳转到模特库 · 高亮卡片</button>
+      <button class="btn" style="width:100%;" onclick="bookingAction('inline')">📋 在此查看模特详情（弹窗）</button>
+    </div>
+    <hr class="div">
+    <div style="display: flex; gap: 6px;">
+      <button class="btn btn-sm btn-danger" onclick="deleteBooking()">删除此预约</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-sm" onclick="closeBookingAction()">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- =============== Model detail modal =============== -->
+<div class="modal-bg" id="model-detail-bg">
+  <div class="modal" style="width: 600px;">
+    <div style="display:flex; gap: 16px; align-items: flex-start; margin-bottom: 16px;">
+      <div class="model-photo-large" id="md-photo"></div>
+      <div style="flex:1;">
+        <h3 id="md-title" style="margin: 0 0 4px;">模特</h3>
+        <div style="color: var(--text-3); font-size: 12px;">点击字段可编辑 · 拖动 ⋮⋮ 调整顺序</div>
+      </div>
+    </div>
+    <div class="md-photo-actions">
+      <button class="btn btn-sm" onclick="document.getElementById('md-photo-upload').click()">📷 上传本地照片</button>
+      <input type="file" id="md-photo-upload" style="display:none" accept="image/*" onchange="uploadModelPhoto(event)">
+      <button class="btn btn-sm" onclick="promptModelPhotoUrl()">🔗 贴照片 URL</button>
+      <button class="btn btn-sm btn-ghost" onclick="clearModelPhoto()">清除</button>
+    </div>
+    <div class="md-field-list" id="md-fields"></div>
+    <button class="btn btn-sm" onclick="addModelField()" style="margin-top: 10px;">+ 增加字段</button>
+    <div class="modal-actions">
+      <button class="btn btn-danger" onclick="deleteCurrentModel()">删除该模特</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-primary" onclick="closeModelDetail()">完成</button>
     </div>
   </div>
 </div>
