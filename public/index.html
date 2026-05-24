@@ -34,6 +34,7 @@
     <button class="tab" data-tab="calendar">排期日历</button>
     <button class="tab" data-tab="workflow">三类内容流程</button>
     <button class="tab" data-tab="models">模特预约</button>
+    <button class="tab" data-tab="team">项目人员</button>
   </div>
 
   <!-- ========== 总览 ========== -->
@@ -146,6 +147,37 @@
         <button class="btn btn-sm" onclick="addModelPool()">+ 新增模特</button>
       </div>
       <div class="model-grid" id="model-pool"></div>
+    </div>
+  </div>
+
+  <!-- ========== 项目人员 ========== -->
+  <div class="panel" id="panel-team">
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">项目组成员</h2>
+        <button class="btn btn-sm" onclick="addTeamMember()">+ 新增成员</button>
+      </div>
+      <div class="model-grid" id="team-list"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">人员排期日历</h2>
+        <div class="legend">
+          <span><span class="legend-dot" style="background:#888780"></span>休息（周末/调休）</span>
+          <span><span class="legend-dot" style="background:#A32D2D"></span>请假（事假/病假）</span>
+        </div>
+      </div>
+      <div class="cal-controls" style="margin-bottom: 12px;">
+        <div></div>
+        <div class="month-nav">
+          <button class="btn btn-sm" onclick="changeTeamMonth(-1)">‹ 上月</button>
+          <div class="label" id="team-month-label"></div>
+          <button class="btn btn-sm" onclick="changeTeamMonth(1)">下月 ›</button>
+        </div>
+        <div style="font-size:12px; color:var(--text-3);">💡 点格子勾选休息 · 点头像名进入"连选模式"</div>
+      </div>
+      <div class="calendar" id="team-calendar"></div>
     </div>
   </div>
 </div>
@@ -278,6 +310,65 @@
       <button class="btn btn-danger" onclick="deleteCurrentModel()">删除该模特</button>
       <div style="flex:1"></div>
       <button class="btn btn-primary" onclick="closeModelDetail()">完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- =============== Team day picker modal =============== -->
+<div class="modal-bg" id="team-day-modal-bg">
+  <div class="modal" style="width: 460px;">
+    <h3 id="team-day-title">日休息 / 请假</h3>
+    <div style="color: var(--text-3); font-size: 12px; margin-bottom: 12px;">勾选当日休息或请假的成员</div>
+    <div id="team-day-checklist"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeTeamDayModal()">完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- =============== Team range mode banner =============== -->
+<div id="team-range-banner" style="
+  display:none;
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+  background: var(--accent); color: white; padding: 10px 18px;
+  border-radius: 24px; font-size: 13px; font-weight: 500;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+  z-index: 1000; display: flex; align-items: center; gap: 12px;
+">
+  <span id="team-range-banner-text">连选模式：点起始日 → 终止日</span>
+  <select id="team-range-status" style="background:white; color:var(--text); border:none; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
+    <option value="rest">休息</option>
+    <option value="leave">请假</option>
+  </select>
+  <button class="btn btn-sm" onclick="exitRangeMode()" style="background: rgba(255,255,255,0.2); color: white; border: none;">退出</button>
+</div>
+
+<!-- =============== Team member detail modal =============== -->
+<div class="modal-bg" id="team-detail-bg">
+  <div class="modal" style="width: 600px;">
+    <div style="display:flex; gap: 16px; align-items: flex-start; margin-bottom: 16px;">
+      <div class="model-photo-large" id="td-photo"></div>
+      <div style="flex:1;">
+        <h3 id="td-title" style="margin: 0 0 4px;">成员</h3>
+        <div style="color: var(--text-3); font-size: 12px;">点击字段可编辑 · 拖动 ⋮⋮ 调整顺序</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="font-size:11px; color:var(--text-3);">代表色</span>
+        <div class="cat-color" id="td-color" style="background:#888"></div>
+      </div>
+    </div>
+    <div class="md-photo-actions">
+      <button class="btn btn-sm" onclick="document.getElementById('td-photo-upload').click()">📷 上传照片</button>
+      <input type="file" id="td-photo-upload" style="display:none" accept="image/*" onchange="uploadTeamPhoto(event)">
+      <button class="btn btn-sm" onclick="promptTeamPhotoUrl()">🔗 贴照片 URL</button>
+      <button class="btn btn-sm btn-ghost" onclick="clearTeamPhoto()">清除</button>
+    </div>
+    <div class="md-field-list" id="td-fields"></div>
+    <button class="btn btn-sm" onclick="addTeamField()" style="margin-top: 10px;">+ 增加字段</button>
+    <div class="modal-actions">
+      <button class="btn btn-danger" onclick="deleteCurrentTeamMember()">删除该成员</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-primary" onclick="closeTeamDetail()">完成</button>
     </div>
   </div>
 </div>
