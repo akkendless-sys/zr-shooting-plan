@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 · 中瑞医疗 拍摄计划</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    height: 100%;
+    background: #FAFAF7;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .card {
+    background: white;
+    border-radius: 14px;
+    padding: 36px 40px;
+    width: 360px;
+    border: 1px solid rgba(0,0,0,0.08);
+  }
+  h1 {
+    margin: 0 0 6px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #1A1A1A;
+  }
+  .sub {
+    color: #888780;
+    font-size: 13px;
+    margin-bottom: 24px;
+  }
+  input {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1px solid rgba(0,0,0,0.18);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    margin-bottom: 12px;
+    transition: border-color 0.15s;
+  }
+  input:focus {
+    outline: none;
+    border-color: #D85A30;
+  }
+  button {
+    width: 100%;
+    padding: 11px;
+    background: #D85A30;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  button:hover { background: #993C1D; }
+  .err {
+    color: #A32D2D;
+    font-size: 12px;
+    margin-top: 8px;
+    min-height: 18px;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>中瑞医疗 · 拍摄计划</h1>
+  <div class="sub">请输入访问密码</div>
+  <input type="password" id="pwd" placeholder="密码" autofocus>
+  <button id="loginBtn">进入</button>
+  <div class="err" id="err"></div>
+</div>
+<script>
+  const pwdInput = document.getElementById('pwd');
+  const btn = document.getElementById('loginBtn');
+  const err = document.getElementById('err');
+
+  async function tryLogin() {
+    err.textContent = '';
+    btn.disabled = true;
+    btn.textContent = '登录中…';
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwdInput.value })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        location.href = '/';
+      } else {
+        err.textContent = data.error || '登录失败';
+      }
+    } catch (e) {
+      err.textContent = '网络错误，请重试';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '进入';
+    }
+  }
+  btn.addEventListener('click', tryLogin);
+  pwdInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') tryLogin();
+  });
+
+  // Auto-redirect if already logged in
+  fetch('/api/me').then(r => r.json()).then(d => {
+    if (d.authenticated) location.href = '/';
+  });
+</script>
+</body>
+</html>
