@@ -1,8 +1,25 @@
-// app.js — collaborative version, syncs to server
+// app.js v2 — adds: model calendar, model photo cards, editable categories,
+// drag-to-reschedule, sub-tabs, import/export
 
-const FEISHU_BASE_URL = 'https://ocn0396e2sc0.feishu.cn/base/HoN7bdvFma83LjsudqycC4IRnjg';
+// ============================================================
+// Default categories (editable now)
+// ============================================================
+const DEFAULT_CATEGORIES = [
+  { key: 'prep',    name: '筹备',     color: '#BA7517' },
+  { key: 'kb',      name: '专业口播',  color: '#185FA5' },
+  { key: 'mm',      name: '美美展示',  color: '#534AB7' },
+  { key: 'cs',      name: '客户见证',  color: '#0F6E56' },
+  { key: 'publish', name: '发布',     color: '#D85A30' },
+];
+
+const COLOR_SWATCHES = [
+  '#D85A30','#993C1D','#BA7517','#0F6E56','#5DCAA5',
+  '#185FA5','#3B9DD9','#534AB7','#7C70E0','#A32D2D',
+  '#888780','#1A1A1A'
+];
 
 const defaultData = {
+  categories: DEFAULT_CATEGORIES.map(c => ({ ...c })),
   targets: [
     { id: 't1', type: 'kb', label: '专业口播', weekly: 2, monthly: 8, location: '院内', purpose: '展示专业度 + 干货输出' },
     { id: 't2', type: 'mm', label: '美美展示', weekly: 2, monthly: 8, location: '院内 + 外景', purpose: '颜值展示 · 前丑后帅变装' },
@@ -15,6 +32,12 @@ const defaultData = {
     { id: 'm4', title: '6月30日 · 全月完结 + 7月预排', desc: '完成全月30条产出 + 7月初稿' }
   ],
   overviewNotes: '— 客户见证为本月主力，所有筹备工作提前 3-7 天闭环；\n— 美美展示一天拍 3-7 条，先变装前再统一拍变装后；\n— 严格按对标拍摄，不拍海量无关素材；\n— 每周日晚提前定好下周对标并发到定板群。',
+  modelSop: [
+    { id: 's1', title: '提前 3-7 天预定', body: '下一个拍摄日的模特需提前 3-7 天确认档期' },
+    { id: 's2', title: '预沟通与熟悉', body: '拍摄前与模特进行一轮远程沟通' },
+    { id: 's3', title: '脚本提前到位', body: '脚本提前一天发给模特让其有时间消化' },
+    { id: 's4', title: '当日严格按画面拍', body: '按对标分镜逐条拍摄，不临场起意' }
+  ],
   workflows: {
     kb: [
       { id: 'wkb1', title: '选题对标', body: '从 388 条口播脚本库筛选本周主题', checklist: [
@@ -94,77 +117,81 @@ const defaultData = {
     ]
   },
   events: [],
-  modelBookings: [],
-  modelPool: [
-    { id: 'mp1', title: '常用模特 · 待录入', body: '请在此添加模特联系方式 / 适合内容 / 报价' }
-  ],
-  view: { tab: 'overview', calView: 'month', year: 2026, month: 5 }
+  modelBookings: [], // { id, modelId, date, purpose, status, notes }
+  modelPool: [],     // { id, name, photo, fields: [{key, value}] }
+  view: { tab: 'overview', calView: 'month', year: 2026, month: 5, mmYear: 2026, mmMonth: 5, wfTab: 'all' }
 };
 
 function uid() { return 'e' + Date.now() + Math.floor(Math.random() * 1000); }
 
 function generateSeedEvents() {
   const ev = [];
-  // May 25-31 prep
   ev.push({ id: uid(), date: '2026-05-26', type: 'prep', title: '6月对标筛选 · 美美展示批次1', time: '全天', location: '线上', owner: '编导组', notes: '挑选 3-5 条对标发定板群', feishu: '' });
   ev.push({ id: uid(), date: '2026-05-27', type: 'prep', title: '6月对标筛选 · 客户见证批次1', time: '全天', location: '线上', owner: '编导组', notes: '挑选 4 条对标 + 脚本撰写', feishu: '' });
   ev.push({ id: uid(), date: '2026-05-28', type: 'prep', title: '模特预约 · 6月第1周客户见证', time: '上午', location: '线上', owner: 'MCN运营', notes: '提前 3-7 天定模特', feishu: '' });
   ev.push({ id: uid(), date: '2026-05-29', type: 'prep', title: '6月口播脚本 · 第1-2条', time: '全天', location: '线上', owner: '编导组', notes: '从388脚本库筛选+定稿', feishu: '' });
   ev.push({ id: uid(), date: '2026-05-30', type: 'prep', title: '档期统一确认 · 6月第1周', time: '下午', location: '诊所', owner: '辉总+编导+摄影+妆造', notes: '四方档期锁定', feishu: '' });
-
-  // June Week 1
   ev.push({ id: uid(), date: '2026-06-02', type: 'cs', title: '客户见证拍摄日 · 案例A (产出4条)', time: '09:00-17:00', location: '诊所', owner: '模特A', notes: '严格按对标分镜', feishu: '' });
   ev.push({ id: uid(), date: '2026-06-03', type: 'mm', title: '美美展示拍摄日 · 院内场', time: '10:00-18:00', location: '诊所', owner: '辉总', notes: '先前再后 · 3-7条', feishu: '' });
   ev.push({ id: uid(), date: '2026-06-04', type: 'kb', title: '口播拍摄 · 第1-2条', time: '14:00-17:00', location: '诊所', owner: '辉总', notes: '抗衰 + 玻尿酸误区', feishu: '' });
   ev.push({ id: uid(), date: '2026-06-05', type: 'publish', title: '发布 · 口播#1', time: '20:00', location: '抖音+小红书', owner: 'MCN运营', notes: '', feishu: '' });
   ev.push({ id: uid(), date: '2026-06-06', type: 'publish', title: '发布 · 客户见证#1', time: '20:00', location: '抖音+小红书', owner: 'MCN运营', notes: '', feishu: '' });
   ev.push({ id: uid(), date: '2026-06-07', type: 'publish', title: '发布 · 美美展示#1', time: '20:00', location: '抖音+小红书', owner: 'MCN运营', notes: '', feishu: '' });
-
-  // June Week 2
-  ev.push({ id: uid(), date: '2026-06-08', type: 'prep', title: '6月第2周对标+模特预约', time: '上午', location: '线上', owner: '编导组+运营', notes: '', feishu: '' });
   ev.push({ id: uid(), date: '2026-06-09', type: 'cs', title: '客户见证拍摄日 · 案例B', time: '09:00-17:00', location: '诊所', owner: '模特B', notes: '', feishu: '' });
   ev.push({ id: uid(), date: '2026-06-10', type: 'mm', title: '美美展示拍摄日 · 外景场', time: '10:00-18:00', location: '外景棚', owner: '辉总', notes: '换场景调性', feishu: '' });
   ev.push({ id: uid(), date: '2026-06-11', type: 'kb', title: '口播拍摄 · 第3-4条', time: '14:00-17:00', location: '诊所', owner: '辉总', notes: '', feishu: '' });
-  ev.push({ id: uid(), date: '2026-06-12', type: 'publish', title: '发布 · 客户见证#2', time: '20:00', location: '抖音+小红书', owner: 'MCN运营', notes: '', feishu: '' });
-  ev.push({ id: uid(), date: '2026-06-13', type: 'publish', title: '发布 · 美美展示#2', time: '20:00', location: '抖音+小红书', owner: 'MCN运营', notes: '', feishu: '' });
-  ev.push({ id: uid(), date: '2026-06-14', type: 'publish', title: '发布 · 口播#2', time: '20:00', location: '抖音+小红书', owner: 'MCN运营', notes: '', feishu: '' });
-
-  // June Week 3
-  ev.push({ id: uid(), date: '2026-06-15', type: 'prep', title: '上半月复盘 + 第3周筹备', time: '全天', location: '诊所', owner: '全员', notes: '', feishu: '' });
   ev.push({ id: uid(), date: '2026-06-16', type: 'cs', title: '客户见证拍摄日 · 案例C', time: '09:00-17:00', location: '诊所', owner: '模特C', notes: '', feishu: '' });
   ev.push({ id: uid(), date: '2026-06-17', type: 'mm', title: '美美展示拍摄日 · 院内场', time: '10:00-18:00', location: '诊所', owner: '辉总', notes: '', feishu: '' });
   ev.push({ id: uid(), date: '2026-06-18', type: 'kb', title: '口播拍摄 · 第5-6条', time: '14:00-17:00', location: '诊所', owner: '辉总', notes: '', feishu: '' });
-  ev.push({ id: uid(), date: '2026-06-19', type: 'publish', title: '发布 · 客户见证#3', time: '20:00', location: '抖音+小红书', owner: 'MCN运营', notes: '', feishu: '' });
-  ev.push({ id: uid(), date: '2026-06-20', type: 'publish', title: '发布 · 美美展示#3', time: '20:00', location: '抖音+小红书', owner: 'MCN运营', notes: '', feishu: '' });
-  ev.push({ id: uid(), date: '2026-06-21', type: 'publish', title: '发布 · 口播#3', time: '20:00', location: '抖音+小红书', owner: 'MCN运营', notes: '', feishu: '' });
-
-  // June Week 4
-  ev.push({ id: uid(), date: '2026-06-22', type: 'prep', title: '6月第4周对标+模特预约', time: '上午', location: '线上', owner: '编导组+运营', notes: '', feishu: '' });
   ev.push({ id: uid(), date: '2026-06-23', type: 'cs', title: '客户见证拍摄日 · 案例D', time: '09:00-17:00', location: '诊所', owner: '模特D', notes: '', feishu: '' });
   ev.push({ id: uid(), date: '2026-06-24', type: 'mm', title: '美美展示拍摄日 · 外景场', time: '10:00-18:00', location: '外景棚', owner: '辉总', notes: '', feishu: '' });
   ev.push({ id: uid(), date: '2026-06-25', type: 'kb', title: '口播拍摄 · 第7-8条', time: '14:00-17:00', location: '诊所', owner: '辉总', notes: '', feishu: '' });
-  ev.push({ id: uid(), date: '2026-06-26', type: 'publish', title: '发布 · 客户见证#4', time: '20:00', location: '抖音+小红书', owner: 'MCN运营', notes: '', feishu: '' });
-  ev.push({ id: uid(), date: '2026-06-27', type: 'publish', title: '发布 · 美美展示#4', time: '20:00', location: '抖音+小红书', owner: 'MCN运营', notes: '', feishu: '' });
-  ev.push({ id: uid(), date: '2026-06-28', type: 'publish', title: '发布 · 口播#4', time: '20:00', location: '抖音+小红书', owner: 'MCN运营', notes: '', feishu: '' });
-
   ev.push({ id: uid(), date: '2026-06-30', type: 'prep', title: '全月复盘 + 7月排期初稿', time: '全天', location: '诊所', owner: '全员', notes: '', feishu: '' });
-
   return ev;
 }
 
-// ===== State =====
+// ============================================================
+// State + sync
+// ============================================================
 let data = null;
 let saveTimer = null;
 let isDirty = false;
 
-const syncStatusEl = () => document.getElementById('syncStatus');
-
 function setSyncStatus(text, cls) {
-  const el = syncStatusEl();
-  if (el) {
-    el.textContent = text;
-    el.className = 'sync-status ' + (cls || '');
+  const el = document.getElementById('syncStatus');
+  if (el) { el.textContent = text; el.className = 'sync-status ' + (cls || ''); }
+}
+
+function mergeData(loaded) {
+  const merged = Object.assign({}, defaultData, loaded);
+  // Ensure required arrays exist
+  if (!Array.isArray(merged.categories) || !merged.categories.length) {
+    merged.categories = DEFAULT_CATEGORIES.map(c => ({...c}));
   }
+  if (!Array.isArray(merged.modelSop)) merged.modelSop = defaultData.modelSop.map(s => ({...s}));
+  if (!Array.isArray(merged.modelBookings)) merged.modelBookings = [];
+  if (!Array.isArray(merged.modelPool)) merged.modelPool = [];
+  // Migrate old modelPool format (had title/body) to new (name/fields)
+  merged.modelPool = merged.modelPool.map(m => {
+    if (m.fields) return m; // already new format
+    return {
+      id: m.id || uid(),
+      name: m.title || m.name || '未命名',
+      photo: '',
+      fields: [
+        { key: '负责联系人', value: '' },
+        { key: '蹭到的热点明星', value: '' },
+        { key: '预计拍摄时长', value: '' },
+        { key: '身高', value: '' },
+        { key: '备注', value: m.body || '' }
+      ]
+    };
+  });
+  if (!merged.view) merged.view = { ...defaultData.view };
+  if (merged.view.mmYear == null) merged.view.mmYear = merged.view.year || 2026;
+  if (merged.view.mmMonth == null) merged.view.mmMonth = merged.view.month || 5;
+  if (!merged.view.wfTab) merged.view.wfTab = 'all';
+  return merged;
 }
 
 async function loadData() {
@@ -174,17 +201,16 @@ async function loadData() {
     if (res.status === 401) { location.href = '/login.html'; return; }
     const json = await res.json();
     if (json.data) {
-      data = Object.assign({}, defaultData, json.data);
+      data = mergeData(json.data);
     } else {
-      // First load — seed
-      data = JSON.parse(JSON.stringify(defaultData));
+      data = mergeData(defaultData);
       data.events = generateSeedEvents();
-      await pushData(); // save initial seed to server
+      await pushData();
     }
     setSyncStatus('已同步', 'saved');
   } catch (e) {
     setSyncStatus('加载失败', 'error');
-    data = JSON.parse(JSON.stringify(defaultData));
+    data = mergeData(defaultData);
     data.events = generateSeedEvents();
   }
 }
@@ -201,15 +227,9 @@ async function pushData() {
     });
     if (res.status === 401) { location.href = '/login.html'; return; }
     const json = await res.json();
-    if (json.ok) {
-      setSyncStatus('已同步', 'saved');
-      isDirty = false;
-    } else {
-      setSyncStatus('保存失败', 'error');
-    }
-  } catch (e) {
-    setSyncStatus('网络错误', 'error');
-  }
+    if (json.ok) { setSyncStatus('已同步', 'saved'); isDirty = false; }
+    else setSyncStatus('保存失败', 'error');
+  } catch (e) { setSyncStatus('网络错误', 'error'); }
 }
 
 function markDirty() {
@@ -217,7 +237,6 @@ function markDirty() {
   setSyncStatus('保存中…', 'saving');
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    // Pull current overview notes from DOM before save
     const notesEl = document.getElementById('overview-notes');
     if (notesEl) data.overviewNotes = notesEl.innerText;
     pushData();
@@ -229,18 +248,50 @@ async function logout() {
   location.href = '/login.html';
 }
 
-// ===== Rendering =====
-document.querySelectorAll('.tab').forEach(tab => {
+// ============================================================
+// Helpers
+// ============================================================
+function esc(s) { if (s == null) return ''; return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+function formatDate(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function truncate(s, n) { if (!s) return ''; return s.length > n ? s.slice(0, n) + '…' : s; }
+function findCategory(key) { return data.categories.find(c => c.key === key) || { key, name: key, color: '#888' }; }
+
+// ============================================================
+// Tabs
+// ============================================================
+document.querySelectorAll('.tabs:not(.sub-tabs) > .tab').forEach(tab => {
   tab.addEventListener('click', () => {
     const name = tab.dataset.tab;
-    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+    document.querySelectorAll('.tabs:not(.sub-tabs) > .tab').forEach(t => t.classList.toggle('active', t === tab));
     document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
     data.view.tab = name;
     markDirty();
     if (name === 'calendar') renderCalendarOrGantt();
+    if (name === 'models') renderModelsPanel();
   });
 });
 
+document.querySelectorAll('#workflow-tabs .tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const which = tab.dataset.wftab;
+    document.querySelectorAll('#workflow-tabs .tab').forEach(t => t.classList.toggle('active', t === tab));
+    data.view.wfTab = which;
+    applyWorkflowTab();
+    markDirty();
+  });
+});
+
+function applyWorkflowTab() {
+  const which = data.view.wfTab || 'all';
+  document.querySelectorAll('[data-wf-section]').forEach(sec => {
+    const cat = sec.dataset.wfSection;
+    sec.style.display = (which === 'all' || which === cat) ? '' : 'none';
+  });
+}
+
+// ============================================================
+// Summary / Targets / Milestones / Notes
+// ============================================================
 function renderSummary() {
   const totalShoot = data.events.filter(e => ['kb','mm','cs'].includes(e.type)).length;
   const totalPublish = data.events.filter(e => e.type === 'publish').length;
@@ -260,7 +311,7 @@ function renderTargets() {
   el.innerHTML = data.targets.map((t, i) => `
     <div class="module">
       <div class="module-head">
-        <div class="module-title"><span class="pill ${t.type === 'kb' ? 'pill-kb' : t.type === 'mm' ? 'pill-mm' : 'pill-cs'}">${t.label}</span></div>
+        <div class="module-title"><span class="pill ${t.type === 'kb' ? 'pill-kb' : t.type === 'mm' ? 'pill-mm' : 'pill-cs'}">${esc(t.label)}</span></div>
       </div>
       <div style="margin-top:8px;">
         <div class="info-line"><span class="k">周产出</span><span class="v" contenteditable="true" data-target="weekly" data-idx="${i}">${t.weekly}</span></div>
@@ -275,8 +326,7 @@ function renderTargets() {
     let val = c.innerText.trim();
     if (field === 'weekly' || field === 'monthly') val = parseInt(val) || 0;
     data.targets[idx][field] = val;
-    markDirty();
-    renderSummary();
+    markDirty(); renderSummary();
   }));
 }
 
@@ -295,12 +345,14 @@ function renderMilestones() {
     markDirty();
   }));
 }
-
 function addMilestone() { data.milestones.push({ id: uid(), title: '新里程碑', desc: '点击编辑详情…' }); markDirty(); renderMilestones(); }
 function deleteMilestone(i) { if (!confirm('删除？')) return; data.milestones.splice(i, 1); markDirty(); renderMilestones(); }
 
 function renderOverviewNotes() { document.getElementById('overview-notes').innerText = data.overviewNotes || ''; }
 
+// ============================================================
+// Workflows (with sub-tab support)
+// ============================================================
 function renderWorkflow(category) {
   const el = document.getElementById('workflow-' + category);
   const items = data.workflows[category] || [];
@@ -330,65 +382,122 @@ function renderWorkflow(category) {
     markDirty();
   }));
 }
-
 function addWorkflowItem(cat) { data.workflows[cat].push({ id: uid(), title: '新要点', body: '点击编辑', checklist: [] }); markDirty(); renderWorkflow(cat); }
 function deleteWorkflow(cat, i) { if (!confirm('删除？')) return; data.workflows[cat].splice(i, 1); markDirty(); renderWorkflow(cat); }
 function toggleCheck(cat, i, ci, checked) { data.workflows[cat][i].checklist[ci].done = checked; markDirty(); renderWorkflow(cat); }
 function addCheck(cat, i, text) { text = text.trim(); if (!text) return; data.workflows[cat][i].checklist.push({ text, done: false }); markDirty(); renderWorkflow(cat); }
 function deleteCheck(cat, i, ci) { data.workflows[cat][i].checklist.splice(ci, 1); markDirty(); renderWorkflow(cat); }
 
-function renderModelBookings() {
-  const el = document.getElementById('model-list');
-  const items = data.modelBookings || [];
-  if (!items.length) { el.innerHTML = '<div class="empty">还没有预约</div>'; return; }
-  el.innerHTML = items.map((m, i) => `
-    <div class="module">
-      <div class="module-head">
-        <div class="module-title" contenteditable="true" data-mb="title" data-idx="${i}">${esc(m.title)}</div>
-        <div class="module-actions"><button class="btn btn-sm btn-ghost btn-danger" onclick="deleteModelBooking(${i})">×</button></div>
-      </div>
-      <div style="margin-top:8px;">
-        <div class="info-line"><span class="k">拍摄日</span><span class="v" contenteditable="true" data-mb="shootDate" data-idx="${i}">${esc(m.shootDate||'')}</span></div>
-        <div class="info-line"><span class="k">预约确认日</span><span class="v" contenteditable="true" data-mb="confirmDate" data-idx="${i}">${esc(m.confirmDate||'')}</span></div>
-        <div class="info-line"><span class="k">用途</span><span class="v" contenteditable="true" data-mb="purpose" data-idx="${i}">${esc(m.purpose||'')}</span></div>
-        <div class="info-line"><span class="k">联系方式</span><span class="v" contenteditable="true" data-mb="contact" data-idx="${i}">${esc(m.contact||'')}</span></div>
-        <div class="info-line"><span class="k">状态</span><span class="v" contenteditable="true" data-mb="status" data-idx="${i}">${esc(m.status||'待确认')}</span></div>
-      </div>
-      <div class="module-body" contenteditable="true" data-mb="notes" data-idx="${i}" style="margin-top:8px;">${esc(m.notes||'')}</div>
-    </div>`).join('');
-  el.querySelectorAll('[contenteditable]').forEach(c => c.addEventListener('blur', () => {
-    data.modelBookings[parseInt(c.dataset.idx)][c.dataset.mb] = c.innerText.trim();
-    markDirty();
-  }));
-}
-function addModelBooking() { data.modelBookings.push({ id: uid(), title: '新模特预约', shootDate: '', confirmDate: '', purpose: '客户见证', contact: '', status: '待确认', notes: '' }); markDirty(); renderModelBookings(); }
-function deleteModelBooking(i) { if (!confirm('删除？')) return; data.modelBookings.splice(i, 1); markDirty(); renderModelBookings(); }
 
-function renderModelPool() {
-  const el = document.getElementById('model-pool');
-  const items = data.modelPool || [];
-  if (!items.length) { el.innerHTML = '<div class="empty">还没有模特</div>'; return; }
-  el.innerHTML = items.map((m, i) => `
-    <div class="module">
-      <div class="module-head">
-        <div class="module-title" contenteditable="true" data-mp="title" data-idx="${i}">${esc(m.title)}</div>
-        <div class="module-actions"><button class="btn btn-sm btn-ghost btn-danger" onclick="deleteModelPool(${i})">×</button></div>
-      </div>
-      <div class="module-body" contenteditable="true" data-mp="body" data-idx="${i}">${esc(m.body)}</div>
-    </div>`).join('');
-  el.querySelectorAll('[contenteditable]').forEach(c => c.addEventListener('blur', () => {
-    data.modelPool[parseInt(c.dataset.idx)][c.dataset.mp] = c.innerText.trim();
-    markDirty();
-  }));
+// ============================================================
+// Categories (editable legend)
+// ============================================================
+function renderCategoryLegend() {
+  const el = document.getElementById('category-legend');
+  el.innerHTML = data.categories.map(c =>
+    `<span><span class="legend-dot" style="background:${c.color}"></span>${esc(c.name)}</span>`
+  ).join('');
+  // also refresh selects in modals
+  ['m-type', 'e-type'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (sel) {
+      const current = sel.value;
+      sel.innerHTML = data.categories.map(c => `<option value="${esc(c.key)}">${esc(c.name)}</option>`).join('');
+      if (current) sel.value = current;
+    }
+  });
 }
-function addModelPool() { data.modelPool.push({ id: uid(), title: '新模特', body: '联系方式 / 适合内容 / 报价' }); markDirty(); renderModelPool(); }
-function deleteModelPool(i) { if (!confirm('删除？')) return; data.modelPool.splice(i, 1); markDirty(); renderModelPool(); }
 
-// Calendar
+let openCatPicker = null;
+function openCategoryEditor() {
+  renderCategoryEditor();
+  document.getElementById('cat-modal-bg').classList.add('show');
+}
+function closeCategoryEditor() {
+  document.getElementById('cat-modal-bg').classList.remove('show');
+  if (openCatPicker) openCatPicker.remove();
+  openCatPicker = null;
+}
+function renderCategoryEditor() {
+  const el = document.getElementById('cat-editor-list');
+  el.innerHTML = data.categories.map((c, i) => `
+    <div class="cat-row">
+      <div class="cat-color" data-idx="${i}" style="background:${c.color}"></div>
+      <input class="cat-name" data-idx="${i}" value="${esc(c.name)}">
+      <span class="cat-key">${esc(c.key)}</span>
+      <button class="btn btn-sm btn-ghost btn-danger" onclick="deleteCategory(${i})">×</button>
+    </div>
+  `).join('');
+  el.querySelectorAll('.cat-name').forEach(input => {
+    input.addEventListener('blur', () => {
+      data.categories[parseInt(input.dataset.idx)].name = input.value.trim() || '未命名';
+      markDirty(); renderCategoryLegend(); renderCalendarOrGantt();
+    });
+  });
+  el.querySelectorAll('.cat-color').forEach(dot => {
+    dot.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showColorPicker(dot, parseInt(dot.dataset.idx));
+    });
+  });
+}
+function showColorPicker(target, idx) {
+  if (openCatPicker) openCatPicker.remove();
+  const picker = document.createElement('div');
+  picker.className = 'color-picker';
+  picker.innerHTML = COLOR_SWATCHES.map(c => `<span class="swatch" data-c="${c}" style="background:${c}"></span>`).join('');
+  document.body.appendChild(picker);
+  const r = target.getBoundingClientRect();
+  picker.style.left = (r.left) + 'px';
+  picker.style.top = (r.bottom + 4 + window.scrollY) + 'px';
+  picker.querySelectorAll('.swatch').forEach(s => {
+    s.addEventListener('click', () => {
+      data.categories[idx].color = s.dataset.c;
+      markDirty();
+      renderCategoryEditor();
+      renderCategoryLegend();
+      renderCalendarOrGantt();
+      picker.remove();
+      openCatPicker = null;
+    });
+  });
+  openCatPicker = picker;
+  setTimeout(() => {
+    document.addEventListener('click', function onDoc() {
+      if (openCatPicker) openCatPicker.remove();
+      openCatPicker = null;
+      document.removeEventListener('click', onDoc);
+    }, { once: true });
+  }, 0);
+}
+function addCategory() {
+  const key = 'cat_' + Date.now().toString(36);
+  data.categories.push({ key, name: '新分类', color: COLOR_SWATCHES[data.categories.length % COLOR_SWATCHES.length] });
+  markDirty(); renderCategoryEditor(); renderCategoryLegend();
+}
+function deleteCategory(i) {
+  const cat = data.categories[i];
+  if (data.categories.length <= 1) { alert('至少保留一个分类'); return; }
+  const used = data.events.filter(e => e.type === cat.key).length;
+  const fallback = data.categories.find((c, ci) => ci !== i);
+  const msg = used > 0
+    ? `共有 ${used} 条事项属于「${cat.name}」，删除后这些事项将归到「${fallback.name}」分类。是否继续？`
+    : `删除分类「${cat.name}」？`;
+  if (!confirm(msg)) return;
+  data.events.forEach(e => { if (e.type === cat.key) e.type = fallback.key; });
+  data.categories.splice(i, 1);
+  markDirty(); renderCategoryEditor(); renderCategoryLegend(); renderCalendarOrGantt();
+}
+
+// ============================================================
+// Schedule calendar (with drag-to-reschedule)
+// ============================================================
 function renderCalendarOrGantt() {
+  renderCategoryLegend();
   if (data.view.calView === 'month') renderCalendar();
   else renderGantt();
 }
+
 function renderCalendar() {
   document.getElementById('month-view').style.display = '';
   document.getElementById('gantt-view').style.display = 'none';
@@ -406,11 +515,11 @@ function renderCalendar() {
     const pm = month === 1 ? 12 : month - 1;
     const py = month === 1 ? year - 1 : year;
     const dateStr = `${py}-${String(pm).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    html += `<div class="cal-day other" onclick="openDayModal('${dateStr}')"><div class="day-num">${d}</div>${renderDayEvents(dateStr)}</div>`;
+    html += `<div class="cal-day other" data-date="${dateStr}" onclick="openDayModal('${dateStr}')"><div class="day-num">${d}</div>${renderDayEvents(dateStr)}</div>`;
   }
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    html += `<div class="cal-day ${dateStr === todayStr ? 'today' : ''}" onclick="openDayModal('${dateStr}')"><div class="day-num">${d}</div>${renderDayEvents(dateStr)}</div>`;
+    html += `<div class="cal-day ${dateStr === todayStr ? 'today' : ''}" data-date="${dateStr}" onclick="openDayModal('${dateStr}')"><div class="day-num">${d}</div>${renderDayEvents(dateStr)}</div>`;
   }
   const totalCells = startWeekday + daysInMonth;
   const trailing = (7 - (totalCells % 7)) % 7;
@@ -418,17 +527,55 @@ function renderCalendar() {
     const nm = month === 12 ? 1 : month + 1;
     const ny = month === 12 ? year + 1 : year;
     const dateStr = `${ny}-${String(nm).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
-    html += `<div class="cal-day other" onclick="openDayModal('${dateStr}')"><div class="day-num">${i}</div>${renderDayEvents(dateStr)}</div>`;
+    html += `<div class="cal-day other" data-date="${dateStr}" onclick="openDayModal('${dateStr}')"><div class="day-num">${i}</div>${renderDayEvents(dateStr)}</div>`;
   }
   cal.innerHTML = html;
+  attachCalendarDnD();
 }
 function renderDayEvents(dateStr) {
   const evs = data.events.filter(e => e.date === dateStr);
   if (!evs.length) return '<div class="cal-events"></div>';
-  return '<div class="cal-events">' + evs.slice(0, 3).map(e =>
-    `<div class="cal-event ev-${e.type}" onclick="event.stopPropagation(); openEditModal('${e.id}')" title="${esc(e.title)}">${esc(e.title)}</div>`
-  ).join('') + (evs.length > 3 ? `<div style="font-size:10px; color:var(--text-3);">+${evs.length - 3} 更多</div>` : '') + '</div>';
+  return '<div class="cal-events">' + evs.slice(0, 3).map(e => {
+    const cat = findCategory(e.type);
+    return `<div class="cal-event" draggable="true" data-event-id="${esc(e.id)}" style="background:${cat.color}" onclick="event.stopPropagation(); openEditModal('${e.id}')" title="${esc(e.title)}">${esc(e.title)}</div>`;
+  }).join('') + (evs.length > 3 ? `<div style="font-size:10px; color:var(--text-3);">+${evs.length - 3} 更多</div>` : '') + '</div>';
 }
+
+function attachCalendarDnD() {
+  let draggingId = null;
+  document.querySelectorAll('#calendar .cal-event[draggable="true"]').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      draggingId = el.dataset.eventId;
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', draggingId);
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+      document.querySelectorAll('.cal-day.drag-over').forEach(d => d.classList.remove('drag-over'));
+      draggingId = null;
+    });
+  });
+  document.querySelectorAll('#calendar .cal-day').forEach(cell => {
+    cell.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; cell.classList.add('drag-over'); });
+    cell.addEventListener('dragleave', () => cell.classList.remove('drag-over'));
+    cell.addEventListener('drop', e => {
+      e.preventDefault();
+      cell.classList.remove('drag-over');
+      const id = e.dataTransfer.getData('text/plain') || draggingId;
+      const date = cell.dataset.date;
+      if (!id || !date) return;
+      const ev = data.events.find(x => x.id === id);
+      if (ev && ev.date !== date) {
+        ev.date = date;
+        markDirty();
+        renderCalendarOrGantt();
+        renderSummary();
+      }
+    });
+  });
+}
+
 function changeMonth(delta) {
   let m = data.view.month + delta, y = data.view.year;
   if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
@@ -441,6 +588,7 @@ function switchView(v) {
   document.querySelectorAll('.view-switch button').forEach(b => b.classList.toggle('active', b.dataset.view === v));
   markDirty(); renderCalendarOrGantt();
 }
+
 function renderGantt() {
   document.getElementById('month-view').style.display = 'none';
   document.getElementById('gantt-view').style.display = '';
@@ -450,13 +598,6 @@ function renderGantt() {
   const todayStr = formatDate(new Date());
   const dayWidth = 36, labelWidth = 220;
   const gantt = document.getElementById('gantt');
-  const groups = [
-    { key: 'prep', label: '筹备', color: 'var(--kb-amber)' },
-    { key: 'kb', label: '专业口播', color: 'var(--kb-blue)' },
-    { key: 'mm', label: '美美展示', color: 'var(--kb-purple)' },
-    { key: 'cs', label: '客户见证', color: 'var(--kb-teal)' },
-    { key: 'publish', label: '发布', color: 'var(--accent)' }
-  ];
   let html = `<div class="gantt-header" style="grid-template-columns: ${labelWidth}px repeat(${daysInMonth}, ${dayWidth}px);"><div class="gantt-label-col">类型 / 日期</div>`;
   for (let d = 1; d <= daysInMonth; d++) {
     const dt = new Date(year, month - 1, d);
@@ -466,9 +607,9 @@ function renderGantt() {
     html += `<div class="gantt-label-col ${wc} ${tc}" style="text-align:center; padding: 6px 0;">${d}</div>`;
   }
   html += `</div>`;
-  for (const g of groups) {
+  for (const g of data.categories) {
     html += `<div class="gantt-row" style="grid-template-columns: ${labelWidth}px repeat(${daysInMonth}, ${dayWidth}px);">`;
-    html += `<div class="gantt-label-col"><span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${g.color}; margin-right:4px;"></span>${g.label}</div>`;
+    html += `<div class="gantt-label-col"><span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${g.color}; margin-right:4px;"></span>${esc(g.name)}</div>`;
     for (let d = 1; d <= daysInMonth; d++) {
       const dt = new Date(year, month - 1, d);
       const wd = dt.getDay();
@@ -477,25 +618,58 @@ function renderGantt() {
       const dateStr = formatDate(dt);
       const cellEvs = data.events.filter(e => e.date === dateStr && e.type === g.key);
       const bars = cellEvs.map(e =>
-        `<div class="gantt-bar" style="left:2px; right:2px; background:${g.color};" onclick="event.stopPropagation(); openEditModal('${e.id}')" title="${esc(e.title)}">${esc(truncate(e.title, 8))}</div>`
+        `<div class="gantt-bar" draggable="true" data-event-id="${esc(e.id)}" style="left:2px; right:2px; background:${g.color};" onclick="event.stopPropagation(); openEditModal('${e.id}')" title="${esc(e.title)}">${esc(truncate(e.title, 8))}</div>`
       ).join('');
-      html += `<div class="gantt-track ${wc} ${tc}" onclick="openDayModal('${dateStr}')">${bars}</div>`;
+      html += `<div class="gantt-track ${wc} ${tc}" data-date="${dateStr}" onclick="openDayModal('${dateStr}')">${bars}</div>`;
     }
     html += `</div>`;
   }
   gantt.innerHTML = html;
+  attachGanttDnD();
+}
+function attachGanttDnD() {
+  document.querySelectorAll('#gantt .gantt-bar').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', el.dataset.eventId);
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+      document.querySelectorAll('.gantt-track.drag-over').forEach(d => d.classList.remove('drag-over'));
+    });
+  });
+  document.querySelectorAll('#gantt .gantt-track').forEach(cell => {
+    cell.addEventListener('dragover', e => { e.preventDefault(); cell.classList.add('drag-over'); });
+    cell.addEventListener('dragleave', () => cell.classList.remove('drag-over'));
+    cell.addEventListener('drop', e => {
+      e.preventDefault();
+      cell.classList.remove('drag-over');
+      const id = e.dataTransfer.getData('text/plain');
+      const date = cell.dataset.date;
+      const ev = data.events.find(x => x.id === id);
+      if (ev && ev.date !== date) {
+        ev.date = date;
+        markDirty(); renderCalendarOrGantt(); renderSummary();
+      }
+    });
+  });
 }
 
-// Modals
+// ============================================================
+// Day modal (schedule events)
+// ============================================================
 let currentModalDate = null;
 function openDayModal(dateStr) {
   currentModalDate = dateStr;
   document.getElementById('modal-title').textContent = `${dateStr} · 日程`;
   const evs = data.events.filter(e => e.date === dateStr);
-  const evList = evs.length ? evs.map(e => `
+  const evList = evs.length ? evs.map(e => {
+    const cat = findCategory(e.type);
+    return `
     <div class="event-row">
       <div class="event-row-left">
-        <div class="ev-tag" style="background: ${tagColor(e.type)};"></div>
+        <div class="ev-tag" style="background: ${cat.color};"></div>
         <div style="flex:1; min-width:0;">
           <div class="title">${esc(e.title)}</div>
           <div class="meta">${esc(e.time||'')} · ${esc(e.location||'')} · ${esc(e.owner||'')}</div>
@@ -505,14 +679,13 @@ function openDayModal(dateStr) {
       <div style="display:flex; gap:4px;">
         <button class="btn btn-sm" onclick="openEditModal('${e.id}'); closeModal();">编辑</button>
       </div>
-    </div>`).join('') : '<div class="empty">这一天还没有安排</div>';
+    </div>`;
+  }).join('') : '<div class="empty">这一天还没有安排</div>';
   document.getElementById('modal-day-events').innerHTML = '<div class="event-list">' + evList + '</div>';
-  document.getElementById('m-title').value = '';
-  document.getElementById('m-time').value = '';
-  document.getElementById('m-location').value = '';
-  document.getElementById('m-owner').value = '';
-  document.getElementById('m-feishu').value = '';
-  document.getElementById('m-notes').value = '';
+  // Refresh type select
+  const sel = document.getElementById('m-type');
+  sel.innerHTML = data.categories.map(c => `<option value="${esc(c.key)}">${esc(c.name)}</option>`).join('');
+  ['m-title','m-time','m-location','m-owner','m-feishu','m-notes'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('modal-bg').classList.add('show');
 }
 function closeModal() { document.getElementById('modal-bg').classList.remove('show'); }
@@ -520,8 +693,7 @@ function saveNewEvent() {
   const title = document.getElementById('m-title').value.trim();
   if (!title) { alert('请填写标题'); return; }
   data.events.push({
-    id: uid(),
-    date: currentModalDate,
+    id: uid(), date: currentModalDate,
     type: document.getElementById('m-type').value,
     title,
     time: document.getElementById('m-time').value.trim(),
@@ -538,6 +710,8 @@ function openEditModal(id) {
   const e = data.events.find(x => x.id === id);
   if (!e) return;
   currentEditId = id;
+  const sel = document.getElementById('e-type');
+  sel.innerHTML = data.categories.map(c => `<option value="${esc(c.key)}">${esc(c.name)}</option>`).join('');
   document.getElementById('e-id').value = id;
   document.getElementById('e-type').value = e.type;
   document.getElementById('e-date-input').value = e.date;
@@ -568,18 +742,440 @@ function deleteEvent() {
   data.events = data.events.filter(x => x.id !== currentEditId);
   markDirty(); closeEditModal(); renderCalendarOrGantt(); renderSummary();
 }
-document.getElementById('modal-bg').addEventListener('click', e => { if (e.target.id === 'modal-bg') closeModal(); });
-document.getElementById('edit-modal-bg').addEventListener('click', e => { if (e.target.id === 'edit-modal-bg') closeEditModal(); });
 
-function formatDate(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
-function esc(s) { if (s == null) return ''; return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
-function truncate(s, n) { if (!s) return ''; return s.length > n ? s.slice(0, n) + '…' : s; }
-function tagColor(t) {
-  return t === 'kb' ? 'var(--kb-blue)' : t === 'mm' ? 'var(--kb-purple)' :
-         t === 'cs' ? 'var(--kb-teal)' : t === 'prep' ? 'var(--kb-amber)' : 'var(--accent)';
+
+// ============================================================
+// Model SOP (editable steps)
+// ============================================================
+function renderModelSop() {
+  const el = document.getElementById('model-sop-list');
+  el.innerHTML = data.modelSop.map((s, i) => `
+    <div class="step">
+      <button class="btn btn-sm btn-ghost btn-danger step-del" onclick="deleteModelSop(${i})">×</button>
+      <div class="step-num">${i + 1}</div>
+      <div class="step-title" contenteditable="true" data-sop="title" data-idx="${i}">${esc(s.title)}</div>
+      <div class="step-body" contenteditable="true" data-sop="body" data-idx="${i}">${esc(s.body)}</div>
+    </div>
+  `).join('');
+  el.querySelectorAll('[contenteditable]').forEach(c => c.addEventListener('blur', () => {
+    data.modelSop[parseInt(c.dataset.idx)][c.dataset.sop] = c.innerText.trim();
+    markDirty();
+  }));
+}
+function addModelSop() {
+  data.modelSop.push({ id: uid(), title: '新步骤', body: '点击编辑详情' });
+  markDirty(); renderModelSop();
+}
+function deleteModelSop(i) {
+  if (!confirm('删除该步骤？')) return;
+  data.modelSop.splice(i, 1);
+  markDirty(); renderModelSop();
 }
 
-// Auto-refresh: pull server data every 30s when tab is visible
+// ============================================================
+// Model calendar
+// ============================================================
+function renderModelCalendar() {
+  const year = data.view.mmYear, month = data.view.mmMonth;
+  document.getElementById('mm-month-label').textContent = `${year}年${month}月`;
+  const first = new Date(year, month - 1, 1);
+  const startWeekday = first.getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const todayStr = formatDate(new Date());
+  const cal = document.getElementById('model-calendar');
+  let html = ['日', '一', '二', '三', '四', '五', '六'].map(h => `<div class="cal-head">${h}</div>`).join('');
+  const prevMonthDays = new Date(year, month - 1, 0).getDate();
+  for (let i = startWeekday - 1; i >= 0; i--) {
+    const d = prevMonthDays - i;
+    const pm = month === 1 ? 12 : month - 1;
+    const py = month === 1 ? year - 1 : year;
+    const dateStr = `${py}-${String(pm).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    html += renderMmDayCell(dateStr, d, true, false);
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    html += renderMmDayCell(dateStr, d, false, dateStr === todayStr);
+  }
+  const totalCells = startWeekday + daysInMonth;
+  const trailing = (7 - (totalCells % 7)) % 7;
+  for (let i = 1; i <= trailing; i++) {
+    const nm = month === 12 ? 1 : month + 1;
+    const ny = month === 12 ? year + 1 : year;
+    const dateStr = `${ny}-${String(nm).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+    html += renderMmDayCell(dateStr, i, true, false);
+  }
+  cal.innerHTML = html;
+}
+function renderMmDayCell(dateStr, dayNum, isOther, isToday) {
+  const bookings = data.modelBookings.filter(b => b.date === dateStr);
+  let badge = '';
+  if (bookings.length === 1) badge = '<div class="booking-dot"></div>';
+  else if (bookings.length > 1) badge = `<div class="booking-count">${bookings.length}</div>`;
+  const previews = bookings.slice(0, 2).map(b => {
+    const m = data.modelPool.find(x => x.id === b.modelId);
+    const name = m ? m.name : '已删除模特';
+    return `<div class="cal-event" style="background: var(--accent);" onclick="event.stopPropagation(); openBookingAction('${b.id}')">${esc(name)}</div>`;
+  }).join('');
+  const more = bookings.length > 2 ? `<div style="font-size:10px; color:var(--text-3);">+${bookings.length - 2} 更多</div>` : '';
+  return `
+    <div class="cal-day ${isOther ? 'other' : ''} ${isToday ? 'today' : ''}" onclick="openMmDayModal('${dateStr}')">
+      <div class="day-num">${dayNum}</div>
+      <div class="cal-events">${previews}${more}</div>
+      ${badge}
+    </div>
+  `;
+}
+function changeMmonth(delta) {
+  let m = data.view.mmMonth + delta, y = data.view.mmYear;
+  if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
+  data.view.mmMonth = m; data.view.mmYear = y;
+  markDirty(); renderModelCalendar();
+}
+
+// ============================================================
+// Booking day modal
+// ============================================================
+let currentBookingDate = null;
+function openMmDayModal(dateStr) {
+  currentBookingDate = dateStr;
+  document.getElementById('mm-day-title').textContent = `${dateStr} · 模特预约`;
+  const bookings = data.modelBookings.filter(b => b.date === dateStr);
+  let listHtml = '';
+  if (!bookings.length) listHtml = '<div class="empty">这一天还没有预约</div>';
+  else {
+    listHtml = bookings.map(b => {
+      const m = data.modelPool.find(x => x.id === b.modelId);
+      const name = m ? m.name : '已删除模特';
+      const photo = (m && m.photo) ? `style="background-image:url('${esc(m.photo)}'); background-size: cover; background-position: center;"` : '';
+      return `
+      <div class="event-row" onclick="openBookingAction('${b.id}')" style="cursor:pointer;">
+        <div class="event-row-left">
+          <div style="width:32px; height:32px; border-radius:50%; background:var(--surface-2); flex-shrink:0;" ${photo}></div>
+          <div style="flex:1; min-width:0;">
+            <div class="title">${esc(name)}</div>
+            <div class="meta">${esc(b.purpose||'')} · ${esc(b.status||'')}</div>
+          </div>
+        </div>
+        <div style="font-size:11px; color: var(--text-3);">点击 →</div>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('mm-day-bookings').innerHTML = '<div class="event-list">' + listHtml + '</div>';
+  // refresh model select
+  const sel = document.getElementById('mb-model-id');
+  if (!data.modelPool.length) {
+    sel.innerHTML = '<option value="">（请先在下方添加模特）</option>';
+  } else {
+    sel.innerHTML = data.modelPool.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
+  }
+  document.getElementById('mb-purpose').value = '客户见证';
+  document.getElementById('mb-status').value = '待确认';
+  document.getElementById('mb-notes').value = '';
+  document.getElementById('mm-day-modal-bg').classList.add('show');
+}
+function closeMmDayModal() { document.getElementById('mm-day-modal-bg').classList.remove('show'); }
+function saveNewBooking() {
+  const modelId = document.getElementById('mb-model-id').value;
+  if (!modelId) { alert('请先添加模特到模特库'); return; }
+  data.modelBookings.push({
+    id: uid(),
+    modelId,
+    date: currentBookingDate,
+    purpose: document.getElementById('mb-purpose').value,
+    status: document.getElementById('mb-status').value,
+    notes: document.getElementById('mb-notes').value.trim()
+  });
+  markDirty(); closeMmDayModal(); renderModelCalendar();
+}
+
+// ============================================================
+// Booking action chooser (jump vs inline)
+// ============================================================
+let currentBookingId = null;
+function openBookingAction(bookingId) {
+  const b = data.modelBookings.find(x => x.id === bookingId);
+  if (!b) return;
+  currentBookingId = bookingId;
+  const m = data.modelPool.find(x => x.id === b.modelId);
+  document.getElementById('booking-action-name').textContent = m
+    ? `${m.name} · ${b.purpose || ''} · ${b.status || ''}`
+    : '已删除模特';
+  document.getElementById('booking-action-bg').classList.add('show');
+}
+function closeBookingAction() { document.getElementById('booking-action-bg').classList.remove('show'); }
+function bookingAction(kind) {
+  const b = data.modelBookings.find(x => x.id === currentBookingId);
+  if (!b) { closeBookingAction(); return; }
+  const m = data.modelPool.find(x => x.id === b.modelId);
+  closeBookingAction();
+  closeMmDayModal();
+  if (!m) { alert('该模特已删除'); return; }
+  if (kind === 'jump') {
+    // Switch nothing (already on models tab). Scroll to model pool and highlight card.
+    const card = document.querySelector(`.model-card[data-model-id="${m.id}"]`);
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.add('highlight');
+      setTimeout(() => card.classList.remove('highlight'), 2600);
+    }
+  } else if (kind === 'inline') {
+    openModelDetail(m.id);
+  }
+}
+function deleteBooking() {
+  if (!confirm('删除此预约？')) return;
+  data.modelBookings = data.modelBookings.filter(b => b.id !== currentBookingId);
+  markDirty(); closeBookingAction(); renderModelCalendar();
+}
+
+// ============================================================
+// Model pool (photo cards)
+// ============================================================
+function renderModelPool() {
+  const el = document.getElementById('model-pool');
+  if (!data.modelPool.length) {
+    el.innerHTML = '<div class="empty" style="grid-column: 1/-1;">还没有模特，点右上角"+ 新增模特"开始添加</div>';
+    return;
+  }
+  el.innerHTML = data.modelPool.map(m => {
+    const bg = m.photo ? `background-image:url('${esc(m.photo)}')` : '';
+    return `
+      <div class="model-card" data-model-id="${esc(m.id)}" onclick="openModelDetail('${esc(m.id)}')">
+        <div class="model-photo" style="${bg}">${m.photo ? '' : '无照片'}</div>
+        <div class="model-name">${esc(m.name || '未命名')}</div>
+      </div>
+    `;
+  }).join('');
+}
+function addModelPool() {
+  const m = {
+    id: uid(),
+    name: '新模特',
+    photo: '',
+    fields: [
+      { key: '负责联系人', value: '' },
+      { key: '蹭到的热点明星', value: '' },
+      { key: '预计拍摄时长', value: '' },
+      { key: '身高', value: '' },
+      { key: '备注', value: '' }
+    ]
+  };
+  data.modelPool.push(m);
+  markDirty(); renderModelPool();
+  openModelDetail(m.id);
+}
+
+// ============================================================
+// Model detail modal
+// ============================================================
+let currentModelId = null;
+function openModelDetail(modelId) {
+  const m = data.modelPool.find(x => x.id === modelId);
+  if (!m) return;
+  currentModelId = modelId;
+  document.getElementById('md-title').textContent = m.name || '未命名';
+  document.getElementById('md-title').setAttribute('contenteditable', 'true');
+  document.getElementById('md-title').oninput = () => {
+    m.name = document.getElementById('md-title').innerText.trim() || '未命名';
+    markDirty();
+    renderModelPool();
+  };
+  // photo
+  const ph = document.getElementById('md-photo');
+  if (m.photo) { ph.style.backgroundImage = `url('${m.photo}')`; ph.textContent = ''; }
+  else { ph.style.backgroundImage = ''; ph.textContent = '无照片'; }
+  renderModelFields();
+  document.getElementById('model-detail-bg').classList.add('show');
+}
+function closeModelDetail() { document.getElementById('model-detail-bg').classList.remove('show'); renderModelPool(); }
+function renderModelFields() {
+  const m = data.modelPool.find(x => x.id === currentModelId);
+  if (!m) return;
+  const el = document.getElementById('md-fields');
+  el.innerHTML = m.fields.map((f, i) => `
+    <div class="md-field" draggable="true" data-idx="${i}">
+      <span class="md-handle">⋮⋮</span>
+      <span class="md-key" contenteditable="true" data-key data-idx="${i}">${esc(f.key)}</span>
+      <span class="md-val" contenteditable="true" data-val data-idx="${i}">${esc(f.value)}</span>
+      <button class="btn btn-sm btn-ghost btn-danger md-del" onclick="deleteModelField(${i})">×</button>
+    </div>
+  `).join('');
+  el.querySelectorAll('[contenteditable]').forEach(c => c.addEventListener('blur', () => {
+    const i = parseInt(c.dataset.idx);
+    const which = c.dataset.key !== undefined ? 'key' : 'val';
+    if (which === 'key') m.fields[i].key = c.innerText.trim() || '字段';
+    else m.fields[i].value = c.innerText.trim();
+    markDirty();
+  }));
+  attachFieldDnD();
+}
+function attachFieldDnD() {
+  const m = data.modelPool.find(x => x.id === currentModelId);
+  if (!m) return;
+  let dragIdx = null;
+  document.querySelectorAll('#md-fields .md-field').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      dragIdx = parseInt(el.dataset.idx);
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+      document.querySelectorAll('.md-field').forEach(f => {
+        f.classList.remove('drag-over-top','drag-over-bot');
+      });
+    });
+    el.addEventListener('dragover', e => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const before = (e.clientY - r.top) < r.height / 2;
+      document.querySelectorAll('.md-field').forEach(f => f.classList.remove('drag-over-top','drag-over-bot'));
+      el.classList.add(before ? 'drag-over-top' : 'drag-over-bot');
+    });
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const before = (e.clientY - r.top) < r.height / 2;
+      const targetIdx = parseInt(el.dataset.idx);
+      if (dragIdx === null || dragIdx === targetIdx) return;
+      const item = m.fields.splice(dragIdx, 1)[0];
+      let insertAt = before ? targetIdx : targetIdx + 1;
+      if (dragIdx < targetIdx) insertAt--;
+      m.fields.splice(insertAt, 0, item);
+      dragIdx = null;
+      markDirty(); renderModelFields();
+    });
+  });
+}
+function addModelField() {
+  const m = data.modelPool.find(x => x.id === currentModelId);
+  if (!m) return;
+  m.fields.push({ key: '新字段', value: '' });
+  markDirty(); renderModelFields();
+}
+function deleteModelField(i) {
+  const m = data.modelPool.find(x => x.id === currentModelId);
+  if (!m) return;
+  m.fields.splice(i, 1);
+  markDirty(); renderModelFields();
+}
+function deleteCurrentModel() {
+  if (!confirm('删除该模特？相关预约不会被删除，但会显示"已删除模特"')) return;
+  data.modelPool = data.modelPool.filter(x => x.id !== currentModelId);
+  markDirty(); closeModelDetail(); renderModelCalendar();
+}
+
+// Photo upload + URL
+function uploadModelPhoto(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!/^image\//.test(file.type)) { alert('请选择图片文件'); return; }
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      // resize to max 800px and convert to JPG quality 0.7
+      const maxW = 800;
+      const scale = Math.min(1, maxW / img.width);
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      const m = data.modelPool.find(x => x.id === currentModelId);
+      if (m) {
+        m.photo = dataUrl;
+        markDirty();
+        const ph = document.getElementById('md-photo');
+        ph.style.backgroundImage = `url('${dataUrl}')`;
+        ph.textContent = '';
+        renderModelPool();
+      }
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+}
+function promptModelPhotoUrl() {
+  const url = prompt('输入图片 URL：');
+  if (!url) return;
+  const m = data.modelPool.find(x => x.id === currentModelId);
+  if (m) {
+    m.photo = url.trim();
+    markDirty();
+    const ph = document.getElementById('md-photo');
+    ph.style.backgroundImage = `url('${m.photo}')`;
+    ph.textContent = '';
+    renderModelPool();
+  }
+}
+function clearModelPhoto() {
+  const m = data.modelPool.find(x => x.id === currentModelId);
+  if (!m) return;
+  m.photo = '';
+  markDirty();
+  const ph = document.getElementById('md-photo');
+  ph.style.backgroundImage = '';
+  ph.textContent = '无照片';
+  renderModelPool();
+}
+
+// ============================================================
+// Render models panel (call when entering models tab)
+// ============================================================
+function renderModelsPanel() {
+  renderModelSop();
+  renderModelCalendar();
+  renderModelPool();
+}
+
+// ============================================================
+// Import / Export
+// ============================================================
+function exportData() {
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `zr-plan-${formatDate(new Date())}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function importData(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      let imported = JSON.parse(e.target.result);
+      if (imported.data) imported = imported.data;
+      if (!confirm('导入将覆盖当前所有数据，确定继续？建议先点"导出"备份当前数据。')) {
+        ev.target.value = '';
+        return;
+      }
+      data = mergeData(imported);
+      pushData().then(() => location.reload());
+    } catch (err) {
+      alert('文件格式错误：' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  ev.target.value = '';
+}
+
+// Close modals on outside click
+['modal-bg','edit-modal-bg','cat-modal-bg','mm-day-modal-bg','booking-action-bg','model-detail-bg'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener('click', e => { if (e.target.id === id) el.classList.remove('show'); });
+});
+
+// Auto-refresh (poll server every 5s)
 let lastRefresh = Date.now();
 async function pollRefresh() {
   if (document.hidden || isDirty) return;
@@ -590,7 +1186,7 @@ async function pollRefresh() {
     if (res.status === 401) { location.href = '/login.html'; return; }
     const json = await res.json();
     if (json.data && JSON.stringify(json.data) !== JSON.stringify(data)) {
-      data = Object.assign({}, defaultData, json.data);
+      data = mergeData(json.data);
       initAll();
     }
   } catch (_) {}
@@ -598,14 +1194,22 @@ async function pollRefresh() {
 setInterval(pollRefresh, 5000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) pollRefresh(); });
 
+// ============================================================
+// Init
+// ============================================================
 function initAll() {
+  // Restore main tab
   if (data.view.tab && data.view.tab !== 'overview') {
-    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === data.view.tab));
+    document.querySelectorAll('.tabs:not(.sub-tabs) > .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === data.view.tab));
     document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + data.view.tab));
   }
+  // Restore wf tab
+  document.querySelectorAll('#workflow-tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.wftab === data.view.wfTab));
+  // Restore cal view
   if (data.view.calView === 'gantt') {
     document.querySelectorAll('.view-switch button').forEach(b => b.classList.toggle('active', b.dataset.view === 'gantt'));
   }
+
   renderSummary();
   renderTargets();
   renderMilestones();
@@ -613,8 +1217,8 @@ function initAll() {
   renderWorkflow('kb');
   renderWorkflow('mm');
   renderWorkflow('cs');
-  renderModelBookings();
-  renderModelPool();
+  applyWorkflowTab();
+  renderModelsPanel();
   renderCalendarOrGantt();
 }
 
