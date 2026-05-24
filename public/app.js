@@ -119,7 +119,9 @@ const defaultData = {
   events: [],
   modelBookings: [], // { id, modelId, date, purpose, status, notes }
   modelPool: [],     // { id, name, photo, fields: [{key, value}] }
-  view: { tab: 'overview', calView: 'month', year: 2026, month: 5, mmYear: 2026, mmMonth: 5, wfTab: 'all' }
+  teamMembers: [],   // { id, name, role, color, photo, fields: [{key, value}] }
+  teamSchedule: [],  // { id, memberId, date, status: 'rest'|'leave', notes }
+  view: { tab: 'overview', calView: 'month', year: 2026, month: 5, mmYear: 2026, mmMonth: 5, teamYear: 2026, teamMonth: 5, wfTab: 'all' }
 };
 
 function uid() { return 'e' + Date.now() + Math.floor(Math.random() * 1000); }
@@ -187,9 +189,38 @@ function mergeData(loaded) {
       ]
     };
   });
+  if (!Array.isArray(merged.teamMembers)) merged.teamMembers = [];
+  if (!merged.teamMembers.length) {
+    // First-time seed with default project crew
+    merged.teamMembers = [
+      { id: uid(), name: '辉总', role: 'IP', color: '#D85A30', photo: '', fields: [
+        { key: '岗位', value: 'IP / 出镜' },
+        { key: '联系方式', value: '' },
+        { key: '备注', value: '' }
+      ]},
+      { id: uid(), name: '金水', role: '编导', color: '#185FA5', photo: '', fields: [
+        { key: '岗位', value: '编导' },
+        { key: '联系方式', value: '' },
+        { key: '备注', value: '' }
+      ]},
+      { id: uid(), name: '唐唐', role: '剪辑', color: '#0F6E56', photo: '', fields: [
+        { key: '岗位', value: '剪辑' },
+        { key: '联系方式', value: '' },
+        { key: '备注', value: '' }
+      ]},
+      { id: uid(), name: '刘鹤', role: '拍剪', color: '#534AB7', photo: '', fields: [
+        { key: '岗位', value: '拍剪' },
+        { key: '联系方式', value: '' },
+        { key: '备注', value: '' }
+      ]},
+    ];
+  }
+  if (!Array.isArray(merged.teamSchedule)) merged.teamSchedule = [];
   if (!merged.view) merged.view = { ...defaultData.view };
   if (merged.view.mmYear == null) merged.view.mmYear = merged.view.year || 2026;
   if (merged.view.mmMonth == null) merged.view.mmMonth = merged.view.month || 5;
+  if (merged.view.teamYear == null) merged.view.teamYear = merged.view.year || 2026;
+  if (merged.view.teamMonth == null) merged.view.teamMonth = merged.view.month || 5;
   if (!merged.view.wfTab) merged.view.wfTab = 'all';
   return merged;
 }
@@ -268,6 +299,7 @@ document.querySelectorAll('.tabs:not(.sub-tabs) > .tab').forEach(tab => {
     markDirty();
     if (name === 'calendar') renderCalendarOrGantt();
     if (name === 'models') renderModelsPanel();
+    if (name === 'team') renderTeamPanel();
   });
 });
 
@@ -1170,7 +1202,7 @@ function importData(ev) {
 }
 
 // Close modals on outside click
-['modal-bg','edit-modal-bg','cat-modal-bg','mm-day-modal-bg','booking-action-bg','model-detail-bg'].forEach(id => {
+['modal-bg','edit-modal-bg','cat-modal-bg','mm-day-modal-bg','booking-action-bg','model-detail-bg','team-day-modal-bg','team-detail-bg'].forEach(id => {
   const el = document.getElementById(id);
   el.addEventListener('click', e => { if (e.target.id === id) el.classList.remove('show'); });
 });
@@ -1219,6 +1251,7 @@ function initAll() {
   renderWorkflow('cs');
   applyWorkflowTab();
   renderModelsPanel();
+  renderTeamPanel();
   renderCalendarOrGantt();
 }
 
@@ -1229,3 +1262,459 @@ function initAll() {
   document.getElementById('loadingScreen').classList.add('hidden');
   document.getElementById('appRoot').style.display = '';
 })();
+
+// ============================================================
+// Team panel
+// ============================================================
+function renderTeamPanel() {
+  renderTeamList();
+  renderTeamCalendar();
+}
+
+function renderTeamList() {
+  const el = document.getElementById('team-list');
+  if (!data.teamMembers.length) {
+    el.innerHTML = '<div class="empty" style="grid-column: 1/-1;">还没有成员，点右上角"+ 新增成员"添加</div>';
+    return;
+  }
+  el.innerHTML = data.teamMembers.map(m => {
+    const bg = m.photo ? `background-image:url('${esc(m.photo)}')` : '';
+    return `
+      <div class="model-card" data-team-id="${esc(m.id)}" onclick="enterRangeMode('${esc(m.id)}')" oncontextmenu="event.preventDefault(); openTeamDetail('${esc(m.id)}'); return false;">
+        <div class="model-photo" style="${bg}; position:relative;">
+          ${m.photo ? '' : '无照片'}
+          <div style="position:absolute; bottom:6px; right:6px; width:14px; height:14px; border-radius:50%; background:${m.color || '#888'}; border: 2px solid white;"></div>
+        </div>
+        <div class="model-name">
+          ${esc(m.name || '未命名')}
+          <div style="font-size:11px; color:var(--text-3); font-weight:400; margin-top:2px;">${esc(m.role || '')}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  // Note: clicking card = enter range mode; right-click = edit detail
+  // Add a small "edit" button overlay for non-right-click users
+  el.querySelectorAll('.model-card').forEach(card => {
+    const id = card.dataset.teamId;
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm btn-ghost';
+    btn.textContent = '编辑';
+    btn.style.cssText = 'position:absolute; top:6px; right:6px; background:rgba(255,255,255,0.9); padding:2px 8px; font-size:11px; z-index:5;';
+    btn.onclick = (e) => { e.stopPropagation(); openTeamDetail(id); };
+    card.style.position = 'relative';
+    card.appendChild(btn);
+  });
+}
+
+function addTeamMember() {
+  const colorIdx = data.teamMembers.length % COLOR_SWATCHES.length;
+  const m = {
+    id: uid(),
+    name: '新成员',
+    role: '',
+    color: COLOR_SWATCHES[colorIdx],
+    photo: '',
+    fields: [
+      { key: '岗位', value: '' },
+      { key: '联系方式', value: '' },
+      { key: '备注', value: '' }
+    ]
+  };
+  data.teamMembers.push(m);
+  markDirty(); renderTeamList();
+  openTeamDetail(m.id);
+}
+
+// ============================================================
+// Team member detail modal
+// ============================================================
+let currentTeamId = null;
+let openTeamColorPicker = null;
+function openTeamDetail(memberId) {
+  const m = data.teamMembers.find(x => x.id === memberId);
+  if (!m) return;
+  currentTeamId = memberId;
+  const title = document.getElementById('td-title');
+  title.textContent = m.name || '未命名';
+  title.setAttribute('contenteditable', 'true');
+  title.oninput = () => {
+    m.name = title.innerText.trim() || '未命名';
+    markDirty(); renderTeamList(); renderTeamCalendar();
+  };
+  const ph = document.getElementById('td-photo');
+  if (m.photo) { ph.style.backgroundImage = `url('${m.photo}')`; ph.textContent = ''; }
+  else { ph.style.backgroundImage = ''; ph.textContent = '无照片'; }
+  const colorEl = document.getElementById('td-color');
+  colorEl.style.background = m.color || '#888';
+  colorEl.onclick = (e) => {
+    e.stopPropagation();
+    showTeamColorPicker(colorEl);
+  };
+  renderTeamFields();
+  document.getElementById('team-detail-bg').classList.add('show');
+}
+function closeTeamDetail() {
+  document.getElementById('team-detail-bg').classList.remove('show');
+  if (openTeamColorPicker) { openTeamColorPicker.remove(); openTeamColorPicker = null; }
+  renderTeamList();
+  renderTeamCalendar();
+}
+function showTeamColorPicker(target) {
+  if (openTeamColorPicker) openTeamColorPicker.remove();
+  const picker = document.createElement('div');
+  picker.className = 'color-picker';
+  picker.innerHTML = COLOR_SWATCHES.map(c => `<span class="swatch" data-c="${c}" style="background:${c}"></span>`).join('');
+  document.body.appendChild(picker);
+  const r = target.getBoundingClientRect();
+  picker.style.left = (r.left) + 'px';
+  picker.style.top = (r.bottom + 4 + window.scrollY) + 'px';
+  picker.querySelectorAll('.swatch').forEach(s => {
+    s.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const m = data.teamMembers.find(x => x.id === currentTeamId);
+      if (m) {
+        m.color = s.dataset.c;
+        target.style.background = s.dataset.c;
+        markDirty();
+      }
+      picker.remove();
+      openTeamColorPicker = null;
+    });
+  });
+  openTeamColorPicker = picker;
+  setTimeout(() => {
+    document.addEventListener('click', function onDoc() {
+      if (openTeamColorPicker) openTeamColorPicker.remove();
+      openTeamColorPicker = null;
+      document.removeEventListener('click', onDoc);
+    }, { once: true });
+  }, 0);
+}
+
+function renderTeamFields() {
+  const m = data.teamMembers.find(x => x.id === currentTeamId);
+  if (!m) return;
+  const el = document.getElementById('td-fields');
+  el.innerHTML = m.fields.map((f, i) => `
+    <div class="md-field" draggable="true" data-idx="${i}">
+      <span class="md-handle">⋮⋮</span>
+      <span class="md-key" contenteditable="true" data-key data-idx="${i}">${esc(f.key)}</span>
+      <span class="md-val" contenteditable="true" data-val data-idx="${i}">${esc(f.value)}</span>
+      <button class="btn btn-sm btn-ghost btn-danger md-del" onclick="deleteTeamField(${i})">×</button>
+    </div>
+  `).join('');
+  el.querySelectorAll('[contenteditable]').forEach(c => c.addEventListener('blur', () => {
+    const i = parseInt(c.dataset.idx);
+    if (c.dataset.key !== undefined) m.fields[i].key = c.innerText.trim() || '字段';
+    else m.fields[i].value = c.innerText.trim();
+    markDirty();
+  }));
+  attachTeamFieldDnD();
+}
+function attachTeamFieldDnD() {
+  const m = data.teamMembers.find(x => x.id === currentTeamId);
+  if (!m) return;
+  let dragIdx = null;
+  document.querySelectorAll('#td-fields .md-field').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      dragIdx = parseInt(el.dataset.idx);
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+      document.querySelectorAll('#td-fields .md-field').forEach(f => f.classList.remove('drag-over-top','drag-over-bot'));
+    });
+    el.addEventListener('dragover', e => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const before = (e.clientY - r.top) < r.height / 2;
+      document.querySelectorAll('#td-fields .md-field').forEach(f => f.classList.remove('drag-over-top','drag-over-bot'));
+      el.classList.add(before ? 'drag-over-top' : 'drag-over-bot');
+    });
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const before = (e.clientY - r.top) < r.height / 2;
+      const targetIdx = parseInt(el.dataset.idx);
+      if (dragIdx === null || dragIdx === targetIdx) return;
+      const item = m.fields.splice(dragIdx, 1)[0];
+      let insertAt = before ? targetIdx : targetIdx + 1;
+      if (dragIdx < targetIdx) insertAt--;
+      m.fields.splice(insertAt, 0, item);
+      dragIdx = null;
+      markDirty(); renderTeamFields();
+    });
+  });
+}
+function addTeamField() {
+  const m = data.teamMembers.find(x => x.id === currentTeamId);
+  if (!m) return;
+  m.fields.push({ key: '新字段', value: '' });
+  markDirty(); renderTeamFields();
+}
+function deleteTeamField(i) {
+  const m = data.teamMembers.find(x => x.id === currentTeamId);
+  if (!m) return;
+  m.fields.splice(i, 1);
+  markDirty(); renderTeamFields();
+}
+function deleteCurrentTeamMember() {
+  if (!confirm('删除该成员？相关排期也会被删除')) return;
+  data.teamSchedule = data.teamSchedule.filter(s => s.memberId !== currentTeamId);
+  data.teamMembers = data.teamMembers.filter(x => x.id !== currentTeamId);
+  markDirty(); closeTeamDetail(); renderTeamList(); renderTeamCalendar();
+}
+
+function uploadTeamPhoto(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!/^image\//.test(file.type)) { alert('请选择图片文件'); return; }
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 800;
+      const scale = Math.min(1, maxW / img.width);
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      const m = data.teamMembers.find(x => x.id === currentTeamId);
+      if (m) {
+        m.photo = dataUrl;
+        markDirty();
+        const ph = document.getElementById('td-photo');
+        ph.style.backgroundImage = `url('${dataUrl}')`;
+        ph.textContent = '';
+        renderTeamList();
+      }
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+}
+function promptTeamPhotoUrl() {
+  const url = prompt('输入图片 URL：');
+  if (!url) return;
+  const m = data.teamMembers.find(x => x.id === currentTeamId);
+  if (m) {
+    m.photo = url.trim();
+    markDirty();
+    const ph = document.getElementById('td-photo');
+    ph.style.backgroundImage = `url('${m.photo}')`;
+    ph.textContent = '';
+    renderTeamList();
+  }
+}
+function clearTeamPhoto() {
+  const m = data.teamMembers.find(x => x.id === currentTeamId);
+  if (!m) return;
+  m.photo = '';
+  markDirty();
+  const ph = document.getElementById('td-photo');
+  ph.style.backgroundImage = '';
+  ph.textContent = '无照片';
+  renderTeamList();
+}
+
+// ============================================================
+// Team calendar
+// ============================================================
+function renderTeamCalendar() {
+  const year = data.view.teamYear, month = data.view.teamMonth;
+  document.getElementById('team-month-label').textContent = `${year}年${month}月`;
+  const first = new Date(year, month - 1, 1);
+  const startWeekday = first.getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const todayStr = formatDate(new Date());
+  const cal = document.getElementById('team-calendar');
+  let html = ['日', '一', '二', '三', '四', '五', '六'].map(h => `<div class="cal-head">${h}</div>`).join('');
+  const prevMonthDays = new Date(year, month - 1, 0).getDate();
+  for (let i = startWeekday - 1; i >= 0; i--) {
+    const d = prevMonthDays - i;
+    const pm = month === 1 ? 12 : month - 1;
+    const py = month === 1 ? year - 1 : year;
+    const dateStr = `${py}-${String(pm).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    html += renderTeamDayCell(dateStr, d, true, false);
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    html += renderTeamDayCell(dateStr, d, false, dateStr === todayStr);
+  }
+  const totalCells = startWeekday + daysInMonth;
+  const trailing = (7 - (totalCells % 7)) % 7;
+  for (let i = 1; i <= trailing; i++) {
+    const nm = month === 12 ? 1 : month + 1;
+    const ny = month === 12 ? year + 1 : year;
+    const dateStr = `${ny}-${String(nm).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+    html += renderTeamDayCell(dateStr, i, true, false);
+  }
+  cal.innerHTML = html;
+  attachTeamCalendarHandlers();
+}
+function renderTeamDayCell(dateStr, dayNum, isOther, isToday) {
+  const items = data.teamSchedule.filter(s => s.date === dateStr);
+  const chips = items.map(s => {
+    const m = data.teamMembers.find(x => x.id === s.memberId);
+    if (!m) return '';
+    const color = s.status === 'leave' ? '#A32D2D' : (m.color || '#888');
+    const cls = s.status === 'leave' ? 'team-chip leave' : 'team-chip';
+    return `<div class="${cls}" data-schedule-id="${esc(s.id)}" style="background:${color}" title="${esc(m.name)} · ${s.status === 'leave' ? '请假' : '休息'}">${esc(m.name)}</div>`;
+  }).join('');
+  return `
+    <div class="cal-day ${isOther ? 'other' : ''} ${isToday ? 'today' : ''}" data-team-date="${dateStr}">
+      <div class="day-num">${dayNum}</div>
+      <div class="team-cal-events">${chips}</div>
+    </div>
+  `;
+}
+function attachTeamCalendarHandlers() {
+  document.querySelectorAll('#team-calendar .cal-day').forEach(cell => {
+    cell.addEventListener('click', (e) => {
+      // If clicked on a chip, toggle that schedule instead
+      if (e.target.classList.contains('team-chip')) {
+        e.stopPropagation();
+        const sid = e.target.dataset.scheduleId;
+        const s = data.teamSchedule.find(x => x.id === sid);
+        if (s) {
+          // cycle: rest → leave → none
+          if (s.status === 'rest') { s.status = 'leave'; }
+          else if (s.status === 'leave') {
+            data.teamSchedule = data.teamSchedule.filter(x => x.id !== sid);
+          }
+          markDirty(); renderTeamCalendar();
+        }
+        return;
+      }
+      const date = cell.dataset.teamDate;
+      if (rangeMode.active) {
+        handleRangeClick(date);
+      } else {
+        openTeamDayModal(date);
+      }
+    });
+    if (rangeMode.active) {
+      cell.addEventListener('mouseenter', () => {
+        if (rangeMode.startDate) {
+          highlightRange(rangeMode.startDate, cell.dataset.teamDate);
+        }
+      });
+    }
+  });
+}
+
+function changeTeamMonth(delta) {
+  let m = data.view.teamMonth + delta, y = data.view.teamYear;
+  if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
+  data.view.teamMonth = m; data.view.teamYear = y;
+  markDirty(); renderTeamCalendar();
+}
+
+// ============================================================
+// Team day modal (per-person checklist)
+// ============================================================
+let currentTeamDayDate = null;
+function openTeamDayModal(dateStr) {
+  currentTeamDayDate = dateStr;
+  document.getElementById('team-day-title').textContent = `${dateStr} · 休息 / 请假`;
+  renderTeamDayChecklist();
+  document.getElementById('team-day-modal-bg').classList.add('show');
+}
+function renderTeamDayChecklist() {
+  const el = document.getElementById('team-day-checklist');
+  if (!data.teamMembers.length) {
+    el.innerHTML = '<div class="empty">还没有成员</div>';
+    return;
+  }
+  el.innerHTML = data.teamMembers.map(m => {
+    const existing = data.teamSchedule.find(s => s.date === currentTeamDayDate && s.memberId === m.id);
+    const curStatus = existing ? existing.status : '';
+    const bg = m.photo ? `background-image:url('${esc(m.photo)}'); background-size:cover; background-position:center;` : '';
+    return `
+      <div class="team-day-row">
+        <div class="avatar" style="${bg}">${m.photo ? '' : esc((m.name||'').slice(0,1))}</div>
+        <div class="name">
+          ${esc(m.name)}
+          <div style="font-size:11px; color:var(--text-3); font-weight:400;">${esc(m.role || '')}</div>
+        </div>
+        <div class="status-buttons">
+          <button class="rest ${curStatus === 'rest' ? 'active' : ''}" onclick="setTeamDayStatus('${esc(m.id)}', 'rest')">休息</button>
+          <button class="leave ${curStatus === 'leave' ? 'active' : ''}" onclick="setTeamDayStatus('${esc(m.id)}', 'leave')">请假</button>
+          <button class="${curStatus === '' ? 'active' : ''}" onclick="setTeamDayStatus('${esc(m.id)}', '')">在岗</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+function setTeamDayStatus(memberId, status) {
+  data.teamSchedule = data.teamSchedule.filter(s => !(s.date === currentTeamDayDate && s.memberId === memberId));
+  if (status === 'rest' || status === 'leave') {
+    data.teamSchedule.push({ id: uid(), memberId, date: currentTeamDayDate, status });
+  }
+  markDirty();
+  renderTeamDayChecklist();
+  renderTeamCalendar();
+}
+function closeTeamDayModal() { document.getElementById('team-day-modal-bg').classList.remove('show'); }
+
+// ============================================================
+// Range mode (click member → click start day → click end day)
+// ============================================================
+const rangeMode = { active: false, memberId: null, startDate: null };
+
+function enterRangeMode(memberId) {
+  const m = data.teamMembers.find(x => x.id === memberId);
+  if (!m) return;
+  rangeMode.active = true;
+  rangeMode.memberId = memberId;
+  rangeMode.startDate = null;
+  const banner = document.getElementById('team-range-banner');
+  banner.style.display = 'flex';
+  document.getElementById('team-range-banner-text').textContent = `连选模式 · ${m.name}：点起始日 → 终止日`;
+  renderTeamCalendar();
+}
+function exitRangeMode() {
+  rangeMode.active = false;
+  rangeMode.memberId = null;
+  rangeMode.startDate = null;
+  document.getElementById('team-range-banner').style.display = 'none';
+  document.querySelectorAll('#team-calendar .cal-day').forEach(c => {
+    c.classList.remove('range-target', 'range-hover');
+  });
+  renderTeamCalendar();
+}
+function handleRangeClick(date) {
+  if (!rangeMode.startDate) {
+    rangeMode.startDate = date;
+    document.getElementById('team-range-banner-text').textContent = `起始日：${date} · 再点终止日`;
+    highlightRange(date, date);
+    return;
+  }
+  // Second click: commit the range
+  const status = document.getElementById('team-range-status').value;
+  const [start, end] = [rangeMode.startDate, date].sort();
+  const memberId = rangeMode.memberId;
+  // Iterate every date in range
+  const startD = new Date(start), endD = new Date(end);
+  for (let d = new Date(startD); d <= endD; d.setDate(d.getDate() + 1)) {
+    const ds = formatDate(d);
+    data.teamSchedule = data.teamSchedule.filter(s => !(s.date === ds && s.memberId === memberId));
+    data.teamSchedule.push({ id: uid(), memberId, date: ds, status });
+  }
+  markDirty();
+  exitRangeMode();
+}
+function highlightRange(startDate, endDate) {
+  const [s, e] = [startDate, endDate].sort();
+  document.querySelectorAll('#team-calendar .cal-day').forEach(cell => {
+    const d = cell.dataset.teamDate;
+    cell.classList.remove('range-target', 'range-hover');
+    if (d >= s && d <= e) cell.classList.add('range-hover');
+    if (d === rangeMode.startDate) cell.classList.add('range-target');
+  });
+}
