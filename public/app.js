@@ -121,7 +121,14 @@ const defaultData = {
   modelPool: [],     // { id, name, photo, fields: [{key, value}] }
   teamMembers: [],   // { id, name, role, color, photo, fields: [{key, value}] }
   teamSchedule: [],  // { id, memberId, date, status: 'rest'|'leave', notes }
-  view: { tab: 'overview', calView: 'month', year: 2026, month: 5, mmYear: 2026, mmMonth: 5, teamYear: 2026, teamMonth: 5, wfTab: 'all' }
+  doctors: [],       // { id, name }
+  clinicEvents: [],  // { id, date, title, timeRange, room, notes }
+  clinicDoctorDays: [], // { id, date, doctorId }
+  perfTags: ['夯爆了', '人上人', 'NPC', '拉完了'],
+  videos: [],        // { id, title, cover, publishDate, predictTag, actualTag, rating, platforms:[{name,collect,comment,like,kezi,url}], fields:[{key,value}] }
+  monthGoals: {},    // { 'kb': {待拍摄数:0,...}, 'mm': {...}, 'cs': {...} }
+  teamIssues: [],    // { id, problem, solution, resolved, optimize }
+  view: { tab: 'overview', calView: 'month', year: 2026, month: 5, mmYear: 2026, mmMonth: 5, teamYear: 2026, teamMonth: 5, clinicYear: 2026, clinicMonth: 5, pubYear: 2026, pubMonth: 5, wfTab: 'all', reviewTab: 'all' }
 };
 
 function uid() { return 'e' + Date.now() + Math.floor(Math.random() * 1000); }
@@ -158,6 +165,8 @@ function generateSeedEvents() {
 let data = null;
 let saveTimer = null;
 let isDirty = false;
+let pushInFlight = false;
+let pushQueued = false;
 
 function setSyncStatus(text, cls) {
   const el = document.getElementById('syncStatus');
@@ -216,11 +225,31 @@ function mergeData(loaded) {
     ];
   }
   if (!Array.isArray(merged.teamSchedule)) merged.teamSchedule = [];
+  if (!Array.isArray(merged.doctors)) merged.doctors = [
+    { id: uid(), name: '时院长' }
+  ];
+  if (!Array.isArray(merged.clinicEvents)) merged.clinicEvents = [];
+  if (!Array.isArray(merged.clinicDoctorDays)) merged.clinicDoctorDays = [];
+  if (!Array.isArray(merged.perfTags) || !merged.perfTags.length) merged.perfTags = ['夯爆了', '人上人', 'NPC', '拉完了'];
+  if (!Array.isArray(merged.videos)) merged.videos = [];
+  if (!merged.monthGoals || typeof merged.monthGoals !== 'object') merged.monthGoals = {};
+  ['kb','mm','cs'].forEach(k => {
+    if (!merged.monthGoals[k]) merged.monthGoals[k] = {
+      '待拍摄数量': 0, '待拍摄场次': 0, '已拍摄素材': 0,
+      '已拍摄待剪': 0, '已完成剪辑': 0, '待发布存片': 0, '已发布条数': 0
+    };
+  });
+  if (!Array.isArray(merged.teamIssues)) merged.teamIssues = [];
   if (!merged.view) merged.view = { ...defaultData.view };
   if (merged.view.mmYear == null) merged.view.mmYear = merged.view.year || 2026;
   if (merged.view.mmMonth == null) merged.view.mmMonth = merged.view.month || 5;
   if (merged.view.teamYear == null) merged.view.teamYear = merged.view.year || 2026;
   if (merged.view.teamMonth == null) merged.view.teamMonth = merged.view.month || 5;
+  if (merged.view.clinicYear == null) merged.view.clinicYear = merged.view.year || 2026;
+  if (merged.view.clinicMonth == null) merged.view.clinicMonth = merged.view.month || 5;
+  if (merged.view.pubYear == null) merged.view.pubYear = merged.view.year || 2026;
+  if (merged.view.pubMonth == null) merged.view.pubMonth = merged.view.month || 5;
+  if (!merged.view.reviewTab) merged.view.reviewTab = 'all';
   if (!merged.view.wfTab) merged.view.wfTab = 'all';
   return merged;
 }
@@ -248,19 +277,37 @@ async function loadData() {
 
 async function pushData() {
   if (!data) return;
+  // Serialize: if a push is already in flight, queue another after it
+  if (pushInFlight) { pushQueued = true; return; }
+  pushInFlight = true;
   setSyncStatus('保存中…', 'saving');
-  try {
-    const res = await fetch('/api/data', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(data)
-    });
-    if (res.status === 401) { location.href = '/login.html'; return; }
-    const json = await res.json();
-    if (json.ok) { setSyncStatus('已同步', 'saved'); isDirty = false; }
-    else setSyncStatus('保存失败', 'error');
-  } catch (e) { setSyncStatus('网络错误', 'error'); }
+  const payload = JSON.stringify(data);
+  let success = false;
+  for (let attempt = 0; attempt < 3 && !success; attempt++) {
+    try {
+      const res = await fetch('/api/data', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: payload
+      });
+      if (res.status === 401) { location.href = '/login.html'; return; }
+      const json = await res.json();
+      if (json.ok) {
+        success = true;
+        isDirty = false;
+        setSyncStatus('已同步', 'saved');
+      } else {
+        await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+      }
+    } catch (e) {
+      await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+    }
+  }
+  if (!success) setSyncStatus('保存失败 · 改动仍在本地', 'error');
+  pushInFlight = false;
+  // If something changed while we were saving, push again
+  if (pushQueued) { pushQueued = false; pushData(); }
 }
 
 function markDirty() {
@@ -300,6 +347,8 @@ document.querySelectorAll('.tabs:not(.sub-tabs) > .tab').forEach(tab => {
     if (name === 'calendar') renderCalendarOrGantt();
     if (name === 'models') renderModelsPanel();
     if (name === 'team') renderTeamPanel();
+    if (name === 'clinic') renderClinicPanel();
+    if (name === 'review') renderReviewPanel();
   });
 });
 
@@ -1202,7 +1251,7 @@ function importData(ev) {
 }
 
 // Close modals on outside click
-['modal-bg','edit-modal-bg','cat-modal-bg','mm-day-modal-bg','booking-action-bg','model-detail-bg','team-day-modal-bg','team-detail-bg'].forEach(id => {
+['modal-bg','edit-modal-bg','cat-modal-bg','mm-day-modal-bg','booking-action-bg','model-detail-bg','team-day-modal-bg','team-detail-bg','clinic-day-modal-bg','video-detail-bg'].forEach(id => {
   const el = document.getElementById(id);
   el.addEventListener('click', e => { if (e.target.id === id) el.classList.remove('show'); });
 });
@@ -1237,6 +1286,8 @@ function initAll() {
   }
   // Restore wf tab
   document.querySelectorAll('#workflow-tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.wftab === data.view.wfTab));
+  // Restore review tab
+  document.querySelectorAll('#review-tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.rvtab === data.view.reviewTab));
   // Restore cal view
   if (data.view.calView === 'gantt') {
     document.querySelectorAll('.view-switch button').forEach(b => b.classList.toggle('active', b.dataset.view === 'gantt'));
@@ -1252,6 +1303,8 @@ function initAll() {
   applyWorkflowTab();
   renderModelsPanel();
   renderTeamPanel();
+  renderClinicPanel();
+  renderReviewPanel();
   renderCalendarOrGantt();
 }
 
@@ -1717,4 +1770,527 @@ function highlightRange(startDate, endDate) {
     if (d >= s && d <= e) cell.classList.add('range-hover');
     if (d === rangeMode.startDate) cell.classList.add('range-target');
   });
+}
+
+// ============================================================
+// Review sub-tabs
+// ============================================================
+document.querySelectorAll('#review-tabs .tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const which = tab.dataset.rvtab;
+    document.querySelectorAll('#review-tabs .tab').forEach(t => t.classList.toggle('active', t === tab));
+    data.view.reviewTab = which;
+    applyReviewTab();
+    markDirty();
+  });
+});
+function applyReviewTab() {
+  const which = data.view.reviewTab || 'all';
+  document.querySelectorAll('[data-rv-section]').forEach(sec => {
+    const s = sec.dataset.rvSection;
+    sec.style.display = (which === 'all' || which === s) ? '' : 'none';
+  });
+}
+
+// ============================================================
+// CLINIC BOARD
+// ============================================================
+function renderClinicPanel() {
+  renderDoctorList();
+  renderClinicCalendar();
+}
+
+let doctorListOpen = false;
+function toggleDoctorList() {
+  doctorListOpen = !doctorListOpen;
+  document.getElementById('doctor-list-wrap').style.display = doctorListOpen ? '' : 'none';
+  document.getElementById('doctor-toggle-btn').textContent = doctorListOpen ? '收起 ▴' : '展开 ▾';
+}
+function renderDoctorList() {
+  const el = document.getElementById('doctor-list');
+  el.innerHTML = data.doctors.map(d => `
+    <span class="doctor-chip-pool">
+      <span contenteditable="true" data-doc-id="${esc(d.id)}">${esc(d.name)}</span>
+      <span class="del" onclick="deleteDoctor('${esc(d.id)}')">×</span>
+    </span>
+  `).join('') + `<button class="btn btn-sm" onclick="addDoctor()">+ 添加医生</button>`;
+  el.querySelectorAll('[data-doc-id]').forEach(c => c.addEventListener('blur', () => {
+    const doc = data.doctors.find(x => x.id === c.dataset.docId);
+    if (doc) { doc.name = c.innerText.trim() || '未命名'; markDirty(); renderClinicCalendar(); }
+  }));
+}
+function addDoctor() {
+  data.doctors.push({ id: uid(), name: '新医生' });
+  markDirty(); renderDoctorList();
+}
+function deleteDoctor(id) {
+  if (!confirm('删除该医生？相关排班也会删除')) return;
+  data.clinicDoctorDays = data.clinicDoctorDays.filter(x => x.doctorId !== id);
+  data.doctors = data.doctors.filter(x => x.id !== id);
+  markDirty(); renderDoctorList(); renderClinicCalendar();
+}
+
+function renderClinicCalendar() {
+  const year = data.view.clinicYear, month = data.view.clinicMonth;
+  document.getElementById('clinic-month-label').textContent = `${year}年${month}月`;
+  const first = new Date(year, month - 1, 1);
+  const startWeekday = first.getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const todayStr = formatDate(new Date());
+  const cal = document.getElementById('clinic-calendar');
+  let html = ['日','一','二','三','四','五','六'].map(h => `<div class="cal-head">${h}</div>`).join('');
+  const prevMonthDays = new Date(year, month - 1, 0).getDate();
+  for (let i = startWeekday - 1; i >= 0; i--) {
+    const d = prevMonthDays - i;
+    const pm = month === 1 ? 12 : month - 1, py = month === 1 ? year - 1 : year;
+    const ds = `${py}-${String(pm).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    html += renderClinicDayCell(ds, d, true, false);
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    html += renderClinicDayCell(ds, d, false, ds === todayStr);
+  }
+  const totalCells = startWeekday + daysInMonth;
+  const trailing = (7 - (totalCells % 7)) % 7;
+  for (let i = 1; i <= trailing; i++) {
+    const nm = month === 12 ? 1 : month + 1, ny = month === 12 ? year + 1 : year;
+    const ds = `${ny}-${String(nm).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+    html += renderClinicDayCell(ds, i, true, false);
+  }
+  cal.innerHTML = html;
+}
+function renderClinicDayCell(dateStr, dayNum, isOther, isToday) {
+  const rooms = data.clinicEvents.filter(e => e.date === dateStr);
+  const docDays = data.clinicDoctorDays.filter(x => x.date === dateStr);
+  const roomChips = rooms.slice(0, 2).map(e =>
+    `<div class="clinic-chip room" title="${esc(e.title)} ${esc(e.timeRange||'')}">${esc(e.title)}</div>`
+  ).join('');
+  const docChips = docDays.slice(0, 3).map(dd => {
+    const doc = data.doctors.find(x => x.id === dd.doctorId);
+    return doc ? `<div class="clinic-chip doc">${esc(doc.name)}</div>` : '';
+  }).join('');
+  const more = (rooms.length > 2) ? `<div style="font-size:10px;color:var(--text-3);">+${rooms.length-2}占用</div>` : '';
+  return `
+    <div class="cal-day ${isOther?'other':''} ${isToday?'today':''}" onclick="openClinicDayModal('${dateStr}')">
+      <div class="day-num">${dayNum}</div>
+      <div class="cal-events">${roomChips}${docChips}${more}</div>
+    </div>`;
+}
+function changeClinicMonth(delta) {
+  let m = data.view.clinicMonth + delta, y = data.view.clinicYear;
+  if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
+  data.view.clinicMonth = m; data.view.clinicYear = y;
+  markDirty(); renderClinicCalendar();
+}
+
+let currentClinicDate = null;
+function openClinicDayModal(dateStr) {
+  currentClinicDate = dateStr;
+  document.getElementById('clinic-day-title').textContent = `${dateStr} · 院内日程`;
+  // doctor checklist
+  const dc = document.getElementById('clinic-doctor-checklist');
+  if (!data.doctors.length) {
+    dc.innerHTML = '<div class="empty" style="padding:8px;">请先在上方"医生名单"添加医生</div>';
+  } else {
+    dc.innerHTML = data.doctors.map(d => {
+      const on = data.clinicDoctorDays.some(x => x.date === dateStr && x.doctorId === d.id);
+      return `<button class="doctor-pick ${on?'active':''}" onclick="toggleClinicDoctor('${esc(d.id)}')">${esc(d.name)}</button>`;
+    }).join('');
+  }
+  renderClinicEventList();
+  ['ce-title','ce-time','ce-room','ce-notes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('clinic-day-modal-bg').classList.add('show');
+}
+function toggleClinicDoctor(docId) {
+  const exists = data.clinicDoctorDays.find(x => x.date === currentClinicDate && x.doctorId === docId);
+  if (exists) data.clinicDoctorDays = data.clinicDoctorDays.filter(x => x !== exists);
+  else data.clinicDoctorDays.push({ id: uid(), date: currentClinicDate, doctorId: docId });
+  markDirty(); openClinicDayModal(currentClinicDate); renderClinicCalendar();
+}
+function renderClinicEventList() {
+  const el = document.getElementById('clinic-event-list');
+  const evs = data.clinicEvents.filter(e => e.date === currentClinicDate);
+  if (!evs.length) { el.innerHTML = '<div class="empty" style="padding:6px;">暂无占用</div>'; return; }
+  el.innerHTML = evs.map(e => `
+    <div class="event-row">
+      <div class="event-row-left">
+        <div class="ev-tag" style="background:var(--kb-teal);"></div>
+        <div style="flex:1;min-width:0;">
+          <div class="title">${esc(e.title)}</div>
+          <div class="meta">${esc(e.timeRange||'')} · ${esc(e.room||'')}${e.notes?' · '+esc(e.notes):''}</div>
+        </div>
+      </div>
+      <button class="btn btn-sm btn-ghost btn-danger" onclick="deleteClinicEvent('${esc(e.id)}')">×</button>
+    </div>`).join('');
+}
+function saveClinicEvent() {
+  const title = document.getElementById('ce-title').value.trim();
+  if (!title) { alert('请填写事项'); return; }
+  data.clinicEvents.push({
+    id: uid(), date: currentClinicDate, title,
+    timeRange: document.getElementById('ce-time').value.trim(),
+    room: document.getElementById('ce-room').value.trim(),
+    notes: document.getElementById('ce-notes').value.trim()
+  });
+  markDirty();
+  ['ce-title','ce-time','ce-room','ce-notes'].forEach(id => document.getElementById(id).value = '');
+  renderClinicEventList(); renderClinicCalendar();
+}
+function deleteClinicEvent(id) {
+  data.clinicEvents = data.clinicEvents.filter(e => e.id !== id);
+  markDirty(); renderClinicEventList(); renderClinicCalendar();
+}
+function closeClinicDayModal() { document.getElementById('clinic-day-modal-bg').classList.remove('show'); }
+
+// ============================================================
+// REVIEW PANEL
+// ============================================================
+function renderReviewPanel() {
+  renderMonthGoals();
+  renderVideoGrid();
+  renderPubCalendar();
+  renderTeamIssues();
+  applyReviewTab();
+}
+
+// ----- Month goals -----
+const GOAL_KEYS = ['待拍摄数量','待拍摄场次','已拍摄素材','已拍摄待剪','已完成剪辑','待发布存片','已发布条数'];
+const GOAL_TYPES = [['kb','专业口播'],['mm','美美展示'],['cs','客户见证']];
+function renderMonthGoals() {
+  const el = document.getElementById('month-goals');
+  let html = '<table class="goals-table"><thead><tr><th>指标 \\ 类型</th>';
+  GOAL_TYPES.forEach(([k,label]) => html += `<th>${label}</th>`);
+  html += '</tr></thead><tbody>';
+  GOAL_KEYS.forEach(gk => {
+    html += `<tr><td>${gk}</td>`;
+    GOAL_TYPES.forEach(([tk]) => {
+      const v = (data.monthGoals[tk] && data.monthGoals[tk][gk] != null) ? data.monthGoals[tk][gk] : 0;
+      html += `<td><span class="gval" contenteditable="true" data-tk="${tk}" data-gk="${esc(gk)}">${v}</span></td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+  el.querySelectorAll('.gval').forEach(c => c.addEventListener('blur', () => {
+    const tk = c.dataset.tk, gk = c.dataset.gk;
+    if (!data.monthGoals[tk]) data.monthGoals[tk] = {};
+    data.monthGoals[tk][gk] = parseInt(c.innerText.trim()) || 0;
+    markDirty();
+  }));
+}
+
+// ----- Video cards -----
+function tagColorByName(name) {
+  const map = { '夯爆了':'#A32D2D', '人上人':'#D85A30', 'NPC':'#888780', '拉完了':'#185FA5' };
+  return map[name] || '#534AB7';
+}
+function renderVideoGrid() {
+  const el = document.getElementById('video-grid');
+  if (!data.videos.length) {
+    el.innerHTML = '<div class="empty" style="grid-column:1/-1;">还没有视频，点右上角"+ 新增视频"</div>';
+    return;
+  }
+  el.innerHTML = data.videos.map(v => {
+    const bg = v.cover ? `background-image:url('${esc(v.cover)}')` : '';
+    const ratingStr = v.rating ? '★'.repeat(v.rating) : '';
+    const corner = `
+      <div class="video-corner">
+        ${v.predictTag ? `<div class="video-tag"><span class="lbl">预</span>${esc(v.predictTag)}</div>` : ''}
+        ${v.actualTag ? `<div class="video-tag" style="background:${tagColorByName(v.actualTag)}"><span class="lbl">实</span>${esc(v.actualTag)}</div>` : ''}
+        ${ratingStr ? `<div class="video-rating-corner">${ratingStr}</div>` : ''}
+      </div>`;
+    const platMini = (v.platforms||[]).slice(0,4).map(p =>
+      `<div class="prow"><span>${esc(p.name||'平台')}</span><span>${p.like||0}赞·${p.kezi||0}客资</span></div>`
+    ).join('');
+    return `
+      <div class="video-card" data-video-id="${esc(v.id)}" onclick="openVideoDetail('${esc(v.id)}')">
+        <div class="video-cover" style="${bg}">${v.cover?'':'无封面'}${corner}</div>
+        <div class="video-meta">
+          <div class="video-name">${esc(v.title||'未命名视频')}</div>
+          <div class="video-platforms-mini">${platMini||'<span style="color:var(--text-3)">暂无平台数据</span>'}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+function addVideo() {
+  const v = {
+    id: uid(), title: '新视频', cover: '', publishDate: '',
+    predictTag: '', actualTag: '', rating: 0,
+    platforms: [{ name: '抖音', collect:0, comment:0, like:0, kezi:0, url:'' }],
+    fields: []
+  };
+  data.videos.push(v);
+  markDirty(); renderVideoGrid(); openVideoDetail(v.id);
+}
+
+let currentVideoId = null;
+function openVideoDetail(id) {
+  const v = data.videos.find(x => x.id === id);
+  if (!v) return;
+  currentVideoId = id;
+  const title = document.getElementById('vd-title');
+  title.textContent = v.title || '未命名视频';
+  title.setAttribute('contenteditable','true');
+  title.oninput = () => { v.title = title.innerText.trim()||'未命名视频'; markDirty(); renderVideoGrid(); };
+  const cv = document.getElementById('vd-cover');
+  if (v.cover) { cv.style.backgroundImage = `url('${v.cover}')`; cv.textContent=''; }
+  else { cv.style.backgroundImage=''; cv.textContent='无封面'; }
+  document.getElementById('vd-pubdate').value = v.publishDate || '';
+  document.getElementById('vd-pubdate').onchange = (e) => { v.publishDate = e.target.value; markDirty(); renderPubCalendar(); };
+  // tag selects
+  const predict = document.getElementById('vd-predict');
+  const actual = document.getElementById('vd-actual');
+  const opts = '<option value="">—</option>' + data.perfTags.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
+  predict.innerHTML = opts; actual.innerHTML = opts;
+  predict.value = v.predictTag || ''; actual.value = v.actualTag || '';
+  predict.onchange = () => { v.predictTag = predict.value; markDirty(); renderVideoGrid(); };
+  actual.onchange = () => { v.actualTag = actual.value; markDirty(); renderVideoGrid(); };
+  renderVideoRating(v);
+  renderVideoPlatforms(v);
+  renderVideoFields(v);
+  document.getElementById('video-detail-bg').classList.add('show');
+}
+function renderVideoRating(v) {
+  const el = document.getElementById('vd-rating');
+  el.innerHTML = [1,2,3,4,5].map(n =>
+    `<span class="star ${n <= (v.rating||0) ? 'on':''}" onclick="setVideoRating(${n})">★</span>`
+  ).join('');
+}
+function setVideoRating(n) {
+  const v = data.videos.find(x => x.id === currentVideoId);
+  if (!v) return;
+  v.rating = (v.rating === n) ? 0 : n;
+  markDirty(); renderVideoRating(v); renderVideoGrid();
+}
+function renderVideoPlatforms(v) {
+  const el = document.getElementById('vd-platforms');
+  let html = `<div class="platform-head"><span>平台</span><span>收藏</span><span>评论</span><span>点赞</span><span>客资</span><span></span></div>`;
+  html += v.platforms.map((p, i) => `
+    <div class="platform-row">
+      <input data-pi="${i}" data-pf="name" value="${esc(p.name||'')}" placeholder="平台名">
+      <input data-pi="${i}" data-pf="collect" value="${esc(p.collect||0)}" type="number">
+      <input data-pi="${i}" data-pf="comment" value="${esc(p.comment||0)}" type="number">
+      <input data-pi="${i}" data-pf="like" value="${esc(p.like||0)}" type="number">
+      <input data-pi="${i}" data-pf="kezi" value="${esc(p.kezi||0)}" type="number">
+      <button class="pdel" onclick="deleteVideoPlatform(${i})">×</button>
+    </div>
+    <div class="platform-row" style="grid-template-columns:1fr auto; margin-top:-2px; margin-bottom:8px;">
+      <input data-pi="${i}" data-pf="url" value="${esc(p.url||'')}" placeholder="发布链接 URL" style="font-size:11px;">
+      <span></span>
+    </div>
+  `).join('');
+  el.innerHTML = html;
+  el.querySelectorAll('input[data-pi]').forEach(inp => inp.addEventListener('input', () => {
+    const i = parseInt(inp.dataset.pi), pf = inp.dataset.pf;
+    if (pf === 'name' || pf === 'url') v.platforms[i][pf] = inp.value;
+    else v.platforms[i][pf] = parseInt(inp.value) || 0;
+    markDirty(); renderVideoGrid();
+  }));
+}
+function addVideoPlatform() {
+  const v = data.videos.find(x => x.id === currentVideoId);
+  if (!v) return;
+  v.platforms.push({ name:'', collect:0, comment:0, like:0, kezi:0, url:'' });
+  markDirty(); renderVideoPlatforms(v);
+}
+function deleteVideoPlatform(i) {
+  const v = data.videos.find(x => x.id === currentVideoId);
+  if (!v) return;
+  v.platforms.splice(i, 1);
+  markDirty(); renderVideoPlatforms(v); renderVideoGrid();
+}
+function renderVideoFields(v) {
+  const el = document.getElementById('vd-fields');
+  if (!v.fields) v.fields = [];
+  el.innerHTML = v.fields.map((f, i) => `
+    <div class="md-field">
+      <span class="md-key" contenteditable="true" data-key data-idx="${i}">${esc(f.key)}</span>
+      <span class="md-val" contenteditable="true" data-val data-idx="${i}">${esc(f.value)}</span>
+      <button class="btn btn-sm btn-ghost btn-danger md-del" onclick="deleteVideoField(${i})">×</button>
+    </div>`).join('');
+  el.querySelectorAll('[contenteditable]').forEach(c => c.addEventListener('blur', () => {
+    const i = parseInt(c.dataset.idx);
+    if (c.dataset.key !== undefined) v.fields[i].key = c.innerText.trim()||'字段';
+    else v.fields[i].value = c.innerText.trim();
+    markDirty();
+  }));
+}
+function addVideoField() {
+  const v = data.videos.find(x => x.id === currentVideoId);
+  if (!v) return;
+  if (!v.fields) v.fields = [];
+  v.fields.push({ key:'新字段', value:'' });
+  markDirty(); renderVideoFields(v);
+}
+function deleteVideoField(i) {
+  const v = data.videos.find(x => x.id === currentVideoId);
+  if (!v) return;
+  v.fields.splice(i, 1);
+  markDirty(); renderVideoFields(v);
+}
+function deleteCurrentVideo() {
+  if (!confirm('删除该视频？')) return;
+  data.videos = data.videos.filter(x => x.id !== currentVideoId);
+  markDirty(); closeVideoDetail(); renderVideoGrid(); renderPubCalendar();
+}
+function closeVideoDetail() { document.getElementById('video-detail-bg').classList.remove('show'); renderVideoGrid(); }
+
+function uploadVideoCover(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!/^image\//.test(file.type)) { alert('请选择图片'); return; }
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 800, scale = Math.min(1, maxW/img.width);
+      const w = Math.round(img.width*scale), h = Math.round(img.height*scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      const v = data.videos.find(x => x.id === currentVideoId);
+      if (v) {
+        v.cover = dataUrl; markDirty();
+        const cv = document.getElementById('vd-cover');
+        cv.style.backgroundImage = `url('${dataUrl}')`; cv.textContent='';
+        renderVideoGrid();
+      }
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+}
+function promptVideoCoverUrl() {
+  const url = prompt('输入封面图 URL：');
+  if (!url) return;
+  const v = data.videos.find(x => x.id === currentVideoId);
+  if (v) {
+    v.cover = url.trim(); markDirty();
+    const cv = document.getElementById('vd-cover');
+    cv.style.backgroundImage = `url('${v.cover}')`; cv.textContent='';
+    renderVideoGrid();
+  }
+}
+function clearVideoCover() {
+  const v = data.videos.find(x => x.id === currentVideoId);
+  if (!v) return;
+  v.cover = ''; markDirty();
+  const cv = document.getElementById('vd-cover');
+  cv.style.backgroundImage=''; cv.textContent='无封面';
+  renderVideoGrid();
+}
+
+// ----- Publish calendar -----
+function renderPubCalendar() {
+  const year = data.view.pubYear, month = data.view.pubMonth;
+  document.getElementById('pub-month-label').textContent = `${year}年${month}月`;
+  const first = new Date(year, month - 1, 1);
+  const startWeekday = first.getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const todayStr = formatDate(new Date());
+  const cal = document.getElementById('pub-calendar');
+  let html = ['日','一','二','三','四','五','六'].map(h => `<div class="cal-head">${h}</div>`).join('');
+  const prevMonthDays = new Date(year, month - 1, 0).getDate();
+  for (let i = startWeekday - 1; i >= 0; i--) {
+    const d = prevMonthDays - i;
+    const pm = month === 1 ? 12 : month-1, py = month === 1 ? year-1 : year;
+    const ds = `${py}-${String(pm).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    html += renderPubDayCell(ds, d, true, false);
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    html += renderPubDayCell(ds, d, false, ds === todayStr);
+  }
+  const totalCells = startWeekday + daysInMonth;
+  const trailing = (7 - (totalCells % 7)) % 7;
+  for (let i = 1; i <= trailing; i++) {
+    const nm = month === 12 ? 1 : month+1, ny = month === 12 ? year+1 : year;
+    const ds = `${ny}-${String(nm).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+    html += renderPubDayCell(ds, i, true, false);
+  }
+  cal.innerHTML = html;
+}
+function renderPubDayCell(dateStr, dayNum, isOther, isToday) {
+  const vids = data.videos.filter(v => v.publishDate === dateStr);
+  const chips = vids.slice(0,3).map(v =>
+    `<div class="cal-event" style="background:var(--accent);" onclick="event.stopPropagation(); jumpToVideo('${esc(v.id)}')" title="${esc(v.title)}">${esc(v.title)}</div>`
+  ).join('');
+  const more = vids.length > 3 ? `<div style="font-size:10px;color:var(--text-3);">+${vids.length-3}</div>` : '';
+  return `
+    <div class="cal-day ${isOther?'other':''} ${isToday?'today':''}">
+      <div class="day-num">${dayNum}</div>
+      <div class="cal-events">${chips}${more}</div>
+    </div>`;
+}
+function changePubMonth(delta) {
+  let m = data.view.pubMonth + delta, y = data.view.pubYear;
+  if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
+  data.view.pubMonth = m; data.view.pubYear = y;
+  markDirty(); renderPubCalendar();
+}
+function jumpToVideo(id) {
+  // Switch to videos sub-tab, highlight the card
+  data.view.reviewTab = 'videos';
+  document.querySelectorAll('#review-tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.rvtab === 'videos'));
+  applyReviewTab();
+  setTimeout(() => {
+    const card = document.querySelector(`.video-card[data-video-id="${id}"]`);
+    if (card) {
+      card.scrollIntoView({ behavior:'smooth', block:'center' });
+      card.classList.add('highlight');
+      setTimeout(() => card.classList.remove('highlight'), 2600);
+    }
+  }, 100);
+  markDirty();
+}
+
+// ----- Team issues -----
+function renderTeamIssues() {
+  const el = document.getElementById('team-issues');
+  if (!data.teamIssues.length) {
+    el.innerHTML = '<div class="empty">还没有记录问题，点右上角"+ 新增问题"</div>';
+    return;
+  }
+  el.innerHTML = data.teamIssues.map((it, i) => `
+    <div class="issue-card">
+      <div class="issue-row">
+        <div class="issue-label">提出问题</div>
+        <div class="issue-val" contenteditable="true" data-ti="problem" data-idx="${i}">${esc(it.problem)}</div>
+        <button class="btn btn-sm btn-ghost btn-danger" onclick="deleteTeamIssue(${i})">×</button>
+      </div>
+      <div class="issue-row">
+        <div class="issue-label">解决方案</div>
+        <div class="issue-val" contenteditable="true" data-ti="solution" data-idx="${i}">${esc(it.solution)}</div>
+      </div>
+      <div class="issue-row">
+        <div class="issue-label">是否解决</div>
+        <div class="issue-resolved-toggle">
+          <button class="yes ${it.resolved===true?'active':''}" onclick="setIssueResolved(${i}, true)">已解决</button>
+          <button class="no ${it.resolved===false?'active':''}" onclick="setIssueResolved(${i}, false)">未解决</button>
+        </div>
+      </div>
+      <div class="issue-row">
+        <div class="issue-label">优化方案</div>
+        <div class="issue-val" contenteditable="true" data-ti="optimize" data-idx="${i}">${esc(it.optimize)}</div>
+      </div>
+    </div>`).join('');
+  el.querySelectorAll('[contenteditable]').forEach(c => c.addEventListener('blur', () => {
+    data.teamIssues[parseInt(c.dataset.idx)][c.dataset.ti] = c.innerText.trim();
+    markDirty();
+  }));
+}
+function addTeamIssue() {
+  data.teamIssues.push({ id: uid(), problem:'', solution:'', resolved:null, optimize:'' });
+  markDirty(); renderTeamIssues();
+}
+function deleteTeamIssue(i) {
+  if (!confirm('删除该问题记录？')) return;
+  data.teamIssues.splice(i, 1);
+  markDirty(); renderTeamIssues();
+}
+function setIssueResolved(i, val) {
+  data.teamIssues[i].resolved = (data.teamIssues[i].resolved === val) ? null : val;
+  markDirty(); renderTeamIssues();
 }
