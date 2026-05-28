@@ -125,6 +125,7 @@ const defaultData = {
   clinicEvents: [],  // { id, date, title, timeRange, room, notes }
   clinicDoctorDays: [], // { id, date, doctorId }
   perfTags: ['夯爆了', '人上人', 'NPC', '拉完了'],
+  goalKeys: ['待拍摄数量','待拍摄场次','已拍摄素材','已拍摄待剪','已完成剪辑','待发布存片','已发布条数'],
   videos: [],        // { id, title, cover, publishDate, predictTag, actualTag, rating, platforms:[{name,collect,comment,like,kezi,url}], fields:[{key,value}] }
   monthGoals: {},    // { 'kb': {待拍摄数:0,...}, 'mm': {...}, 'cs': {...} }
   teamIssues: [],    // { id, problem, solution, resolved, optimize }
@@ -232,12 +233,18 @@ function mergeData(loaded) {
   if (!Array.isArray(merged.clinicDoctorDays)) merged.clinicDoctorDays = [];
   if (!Array.isArray(merged.perfTags) || !merged.perfTags.length) merged.perfTags = ['夯爆了', '人上人', 'NPC', '拉完了'];
   if (!Array.isArray(merged.videos)) merged.videos = [];
+  merged.videos.forEach(v => {
+    if (v.adInvested === undefined) v.adInvested = false;
+    if (v.adAmount === undefined) v.adAmount = '';
+    if (!Array.isArray(v.platforms)) v.platforms = [];
+    if (!Array.isArray(v.fields)) v.fields = [];
+  });
   if (!merged.monthGoals || typeof merged.monthGoals !== 'object') merged.monthGoals = {};
+  if (!Array.isArray(merged.goalKeys) || !merged.goalKeys.length) {
+    merged.goalKeys = ['待拍摄数量','待拍摄场次','已拍摄素材','已拍摄待剪','已完成剪辑','待发布存片','已发布条数'];
+  }
   ['kb','mm','cs'].forEach(k => {
-    if (!merged.monthGoals[k]) merged.monthGoals[k] = {
-      '待拍摄数量': 0, '待拍摄场次': 0, '已拍摄素材': 0,
-      '已拍摄待剪': 0, '已完成剪辑': 0, '待发布存片': 0, '已发布条数': 0
-    };
+    if (!merged.monthGoals[k]) merged.monthGoals[k] = {};
   });
   if (!Array.isArray(merged.teamIssues)) merged.teamIssues = [];
   if (!merged.view) merged.view = { ...defaultData.view };
@@ -250,6 +257,8 @@ function mergeData(loaded) {
   if (merged.view.pubYear == null) merged.view.pubYear = merged.view.year || 2026;
   if (merged.view.pubMonth == null) merged.view.pubMonth = merged.view.month || 5;
   if (!merged.view.reviewTab) merged.view.reviewTab = 'all';
+  if (!merged.view.collapsed) merged.view.collapsed = {};
+  if (!merged.view.issueFilter) merged.view.issueFilter = 'all';
   if (!merged.view.wfTab) merged.view.wfTab = 'all';
   return merged;
 }
@@ -262,6 +271,7 @@ async function loadData() {
     const json = await res.json();
     if (json.data) {
       data = mergeData(json.data);
+      lastSaveOkTs = json.updated_at || Date.now();
     } else {
       data = mergeData(defaultData);
       data.events = generateSeedEvents();
@@ -296,6 +306,7 @@ async function pushData() {
       if (json.ok) {
         success = true;
         isDirty = false;
+        lastSaveOkTs = json.updated_at || Date.now();
         setSyncStatus('已同步', 'saved');
       } else {
         await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
@@ -312,6 +323,7 @@ async function pushData() {
 
 function markDirty() {
   isDirty = true;
+  lastLocalEditTs = Date.now();
   setSyncStatus('保存中…', 'saving');
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
@@ -340,6 +352,7 @@ function findCategory(key) { return data.categories.find(c => c.key === key) || 
 document.querySelectorAll('.tabs:not(.sub-tabs) > .tab').forEach(tab => {
   tab.addEventListener('click', () => {
     const name = tab.dataset.tab;
+    if (typeof rangeMode !== 'undefined' && rangeMode.active) exitRangeMode();
     document.querySelectorAll('.tabs:not(.sub-tabs) > .tab').forEach(t => t.classList.toggle('active', t === tab));
     document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
     data.view.tab = name;
@@ -1256,19 +1269,32 @@ function importData(ev) {
   el.addEventListener('click', e => { if (e.target.id === id) el.classList.remove('show'); });
 });
 
-// Auto-refresh (poll server every 5s)
+// Auto-refresh (poll server) — with strong local-data protection
 let lastRefresh = Date.now();
+let lastLocalEditTs = 0;       // when did the user last edit anything
+let lastSaveOkTs = 0;          // when did our last successful save complete
 async function pollRefresh() {
-  if (document.hidden || isDirty) return;
+  // NEVER pull from server if:
+  //  - tab hidden
+  //  - we have unsaved local changes
+  //  - a save is currently in flight or queued
+  //  - the user edited something in the last 60s (they're actively working)
+  if (document.hidden) return;
+  if (isDirty || pushInFlight || pushQueued) return;
+  if (Date.now() - lastLocalEditTs < 60000) return;
   if (Date.now() - lastRefresh < 30000) return;
   lastRefresh = Date.now();
   try {
     const res = await fetch('/api/data', { credentials: 'include' });
     if (res.status === 401) { location.href = '/login.html'; return; }
     const json = await res.json();
-    if (json.data && JSON.stringify(json.data) !== JSON.stringify(data)) {
-      data = mergeData(json.data);
-      initAll();
+    // Only adopt server data if it is NEWER than our last successful save.
+    // This prevents a stale server snapshot from clobbering our work.
+    if (json.data && (json.updated_at || 0) > lastSaveOkTs) {
+      if (JSON.stringify(json.data) !== JSON.stringify(data)) {
+        data = mergeData(json.data);
+        initAll();
+      }
     }
   } catch (_) {}
 }
@@ -1279,6 +1305,9 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
 // Init
 // ============================================================
 function initAll() {
+  // Safety: range banner must never be visible on load
+  const _b = document.getElementById('team-range-banner');
+  if (_b) _b.style.display = 'none';
   // Restore main tab
   if (data.view.tab && data.view.tab !== 'overview') {
     document.querySelectorAll('.tabs:not(.sub-tabs) > .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === data.view.tab));
@@ -1333,7 +1362,7 @@ function renderTeamList() {
   el.innerHTML = data.teamMembers.map(m => {
     const bg = m.photo ? `background-image:url('${esc(m.photo)}')` : '';
     return `
-      <div class="model-card" data-team-id="${esc(m.id)}" onclick="enterRangeMode('${esc(m.id)}')" oncontextmenu="event.preventDefault(); openTeamDetail('${esc(m.id)}'); return false;">
+      <div class="model-card" data-team-id="${esc(m.id)}" onclick="openTeamDetail('${esc(m.id)}')">
         <div class="model-photo" style="${bg}; position:relative;">
           ${m.photo ? '' : '无照片'}
           <div style="position:absolute; bottom:6px; right:6px; width:14px; height:14px; border-radius:50%; background:${m.color || '#888'}; border: 2px solid white;"></div>
@@ -1341,22 +1370,11 @@ function renderTeamList() {
         <div class="model-name">
           ${esc(m.name || '未命名')}
           <div style="font-size:11px; color:var(--text-3); font-weight:400; margin-top:2px;">${esc(m.role || '')}</div>
+          <button class="btn btn-sm" style="margin-top:6px; width:100%;" onclick="event.stopPropagation(); enterRangeMode('${esc(m.id)}')">📅 连选排休</button>
         </div>
-      </div>
-    `;
+      </div>`;
   }).join('');
-  // Note: clicking card = enter range mode; right-click = edit detail
-  // Add a small "edit" button overlay for non-right-click users
-  el.querySelectorAll('.model-card').forEach(card => {
-    const id = card.dataset.teamId;
-    const btn = document.createElement('button');
-    btn.className = 'btn btn-sm btn-ghost';
-    btn.textContent = '编辑';
-    btn.style.cssText = 'position:absolute; top:6px; right:6px; background:rgba(255,255,255,0.9); padding:2px 8px; font-size:11px; z-index:5;';
-    btn.onclick = (e) => { e.stopPropagation(); openTeamDetail(id); };
-    card.style.position = 'relative';
-    card.appendChild(btn);
-  });
+  document.getElementById('team-list').dataset.ready = '1';
 }
 
 function addTeamMember() {
@@ -1951,25 +1969,50 @@ function renderReviewPanel() {
   renderPubCalendar();
   renderTeamIssues();
   applyReviewTab();
+  applyCollapse();
 }
 
-// ----- Month goals -----
-const GOAL_KEYS = ['待拍摄数量','待拍摄场次','已拍摄素材','已拍摄待剪','已完成剪辑','待发布存片','已发布条数'];
+// Collapse / expand sections in review panel
+function toggleCollapse(key, headerEl) {
+  data.view.collapsed[key] = !data.view.collapsed[key];
+  markDirty();
+  applyCollapse();
+}
+function applyCollapse() {
+  document.querySelectorAll('[data-collapse-body]').forEach(body => {
+    const key = body.dataset.collapseBody;
+    const collapsed = !!data.view.collapsed[key];
+    body.style.display = collapsed ? 'none' : '';
+    const header = document.querySelector(`.collapse-toggle[onclick*="'${key}'"]`);
+    if (header) header.classList.toggle('collapsed', collapsed);
+  });
+}
+
+// Issue filter (shared across 全部总览 and 团队问题 sub-tab)
+function setIssueFilter(f) {
+  data.view.issueFilter = f;
+  document.querySelectorAll('#issue-filter button').forEach(b => b.classList.toggle('active', b.dataset.ifilter === f));
+  markDirty();
+  renderTeamIssues();
+}
+
+// ----- Month goals (editable keys) -----
 const GOAL_TYPES = [['kb','专业口播'],['mm','美美展示'],['cs','客户见证']];
 function renderMonthGoals() {
   const el = document.getElementById('month-goals');
   let html = '<table class="goals-table"><thead><tr><th>指标 \\ 类型</th>';
   GOAL_TYPES.forEach(([k,label]) => html += `<th>${label}</th>`);
-  html += '</tr></thead><tbody>';
-  GOAL_KEYS.forEach(gk => {
-    html += `<tr><td>${gk}</td>`;
+  html += '<th style="width:40px;"></th></tr></thead><tbody>';
+  data.goalKeys.forEach((gk, gi) => {
+    html += `<tr><td><span class="gkey" contenteditable="true" data-gi="${gi}">${esc(gk)}</span></td>`;
     GOAL_TYPES.forEach(([tk]) => {
       const v = (data.monthGoals[tk] && data.monthGoals[tk][gk] != null) ? data.monthGoals[tk][gk] : 0;
       html += `<td><span class="gval" contenteditable="true" data-tk="${tk}" data-gk="${esc(gk)}">${v}</span></td>`;
     });
-    html += '</tr>';
+    html += `<td><button class="btn btn-sm btn-ghost btn-danger" onclick="deleteGoalKey(${gi})">×</button></td></tr>`;
   });
   html += '</tbody></table>';
+  html += '<button class="btn btn-sm" onclick="addGoalKey()" style="margin-top:10px;">+ 新增指标</button>';
   el.innerHTML = html;
   el.querySelectorAll('.gval').forEach(c => c.addEventListener('blur', () => {
     const tk = c.dataset.tk, gk = c.dataset.gk;
@@ -1977,6 +2020,32 @@ function renderMonthGoals() {
     data.monthGoals[tk][gk] = parseInt(c.innerText.trim()) || 0;
     markDirty();
   }));
+  el.querySelectorAll('.gkey').forEach(c => c.addEventListener('blur', () => {
+    const gi = parseInt(c.dataset.gi);
+    const oldKey = data.goalKeys[gi];
+    const newKey = c.innerText.trim() || '新指标';
+    if (newKey === oldKey) return;
+    // rename key across all types
+    data.goalKeys[gi] = newKey;
+    GOAL_TYPES.forEach(([tk]) => {
+      if (data.monthGoals[tk] && data.monthGoals[tk][oldKey] != null) {
+        data.monthGoals[tk][newKey] = data.monthGoals[tk][oldKey];
+        delete data.monthGoals[tk][oldKey];
+      }
+    });
+    markDirty(); renderMonthGoals();
+  }));
+}
+function addGoalKey() {
+  data.goalKeys.push('新指标');
+  markDirty(); renderMonthGoals();
+}
+function deleteGoalKey(gi) {
+  const gk = data.goalKeys[gi];
+  if (!confirm(`删除指标「${gk}」？`)) return;
+  data.goalKeys.splice(gi, 1);
+  GOAL_TYPES.forEach(([tk]) => { if (data.monthGoals[tk]) delete data.monthGoals[tk][gk]; });
+  markDirty(); renderMonthGoals();
 }
 
 // ----- Video cards -----
@@ -2000,14 +2069,18 @@ function renderVideoGrid() {
         ${ratingStr ? `<div class="video-rating-corner">${ratingStr}</div>` : ''}
       </div>`;
     const platMini = (v.platforms||[]).slice(0,4).map(p =>
-      `<div class="prow"><span>${esc(p.name||'平台')}</span><span>${p.like||0}赞·${p.kezi||0}客资</span></div>`
+      `<div class="prow"><span>${esc(p.name||'平台')}</span><span>藏${p.collect||0}·评${p.comment||0}·赞${p.like||0}·客资${p.kezi||0}</span></div>`
     ).join('');
+    const adBadge = v.adInvested
+      ? `<div style="font-size:11px; color:var(--accent); font-weight:500; margin-top:4px;">💰 已投流 ${v.adAmount ? '¥'+esc(v.adAmount) : ''}</div>`
+      : '';
     return `
       <div class="video-card" data-video-id="${esc(v.id)}" onclick="openVideoDetail('${esc(v.id)}')">
         <div class="video-cover" style="${bg}">${v.cover?'':'无封面'}${corner}</div>
         <div class="video-meta">
           <div class="video-name">${esc(v.title||'未命名视频')}</div>
           <div class="video-platforms-mini">${platMini||'<span style="color:var(--text-3)">暂无平台数据</span>'}</div>
+          ${adBadge}
         </div>
       </div>`;
   }).join('');
@@ -2016,6 +2089,7 @@ function addVideo() {
   const v = {
     id: uid(), title: '新视频', cover: '', publishDate: '',
     predictTag: '', actualTag: '', rating: 0,
+    adInvested: false, adAmount: '',
     platforms: [{ name: '抖音', collect:0, comment:0, like:0, kezi:0, url:'' }],
     fields: []
   };
@@ -2046,6 +2120,11 @@ function openVideoDetail(id) {
   predict.onchange = () => { v.predictTag = predict.value; markDirty(); renderVideoGrid(); };
   actual.onchange = () => { v.actualTag = actual.value; markDirty(); renderVideoGrid(); };
   renderVideoRating(v);
+  // 投流 fields
+  renderVideoAd(v);
+  const amtInput = document.getElementById('vd-ad-amount');
+  amtInput.value = v.adAmount || '';
+  amtInput.oninput = () => { v.adAmount = amtInput.value.trim(); markDirty(); renderVideoGrid(); };
   renderVideoPlatforms(v);
   renderVideoFields(v);
   document.getElementById('video-detail-bg').classList.add('show');
@@ -2061,6 +2140,18 @@ function setVideoRating(n) {
   if (!v) return;
   v.rating = (v.rating === n) ? 0 : n;
   markDirty(); renderVideoRating(v); renderVideoGrid();
+}
+function renderVideoAd(v) {
+  document.getElementById('vd-ad-yes').classList.toggle('active', v.adInvested === true);
+  document.getElementById('vd-ad-no').classList.toggle('active', v.adInvested === false);
+  document.getElementById('vd-ad-amount').style.display = v.adInvested ? '' : 'none';
+}
+function setVideoAd(val) {
+  const v = data.videos.find(x => x.id === currentVideoId);
+  if (!v) return;
+  v.adInvested = val;
+  if (!val) v.adAmount = '';
+  markDirty(); renderVideoAd(v); renderVideoGrid();
 }
 function renderVideoPlatforms(v) {
   const el = document.getElementById('vd-platforms');
@@ -2231,9 +2322,9 @@ function changePubMonth(delta) {
   markDirty(); renderPubCalendar();
 }
 function jumpToVideo(id) {
-  // Switch to videos sub-tab, highlight the card
-  data.view.reviewTab = 'videos';
-  document.querySelectorAll('#review-tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.rvtab === 'videos'));
+  // Switch to 全部总览 sub-tab, highlight the card there
+  data.view.reviewTab = 'all';
+  document.querySelectorAll('#review-tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.rvtab === 'all'));
   applyReviewTab();
   setTimeout(() => {
     const card = document.querySelector(`.video-card[data-video-id="${id}"]`);
@@ -2249,11 +2340,21 @@ function jumpToVideo(id) {
 // ----- Team issues -----
 function renderTeamIssues() {
   const el = document.getElementById('team-issues');
+  // sync filter buttons active state
+  const f = data.view.issueFilter || 'all';
+  document.querySelectorAll('#issue-filter button').forEach(b => b.classList.toggle('active', b.dataset.ifilter === f));
+  let list = data.teamIssues.map((it, i) => ({ it, i }));
+  if (f === 'resolved') list = list.filter(x => x.it.resolved === true);
+  else if (f === 'unresolved') list = list.filter(x => x.it.resolved !== true);
   if (!data.teamIssues.length) {
     el.innerHTML = '<div class="empty">还没有记录问题，点右上角"+ 新增问题"</div>';
     return;
   }
-  el.innerHTML = data.teamIssues.map((it, i) => `
+  if (!list.length) {
+    el.innerHTML = `<div class="empty">没有「${f==='resolved'?'已解决':'未解决'}」的问题</div>`;
+    return;
+  }
+  el.innerHTML = list.map(({ it, i }) => `
     <div class="issue-card">
       <div class="issue-row">
         <div class="issue-label">提出问题</div>
