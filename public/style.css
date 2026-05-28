@@ -482,3 +482,16 @@ html, body {
 }
 .issue-resolved-toggle button.active.yes { background: #0F6E56; color: white; border-color: #0F6E56; }
 .issue-resolved-toggle button.active.no { background: #A32D2D; color: white; border-color: #A32D2D; }
+
+.goals-table .gkey { cursor: text; outline: none; }
+.goals-table .gkey:focus { outline: 1px dashed var(--accent); background: var(--accent-soft); border-radius: 3px; padding: 1px 4px; }
+
+/* Collapsible section in overview */
+.collapse-toggle { cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 6px; }
+.collapse-toggle .arrow { font-size: 11px; color: var(--text-3); transition: transform .15s; }
+.collapse-toggle.collapsed .arrow { transform: rotate(-90deg); }
+
+/* Issue filter tabs */
+.issue-filter { display: inline-flex; gap: 4px; margin-bottom: 12px; }
+.issue-filter button { padding: 5px 14px; font-size: 13px; border-radius: 14px; border: 1px solid var(--border-strong); background: var(--surface); cursor: pointer; font-family: inherit; color: var(--text-2); }
+.issue-filter button.active { background: var(--text); color: white; border-color: var(--text); }
