@@ -223,36 +223,43 @@
     </div>
 
     <div class="section" data-rv-section="goals">
-      <div class="section-header"><h2 class="section-title">本月目标</h2></div>
-      <div id="month-goals"></div>
+      <div class="section-header"><h2 class="section-title collapse-toggle" onclick="toggleCollapse('goals', this)"><span class="arrow">▾</span>本月目标</h2></div>
+      <div id="month-goals" data-collapse-body="goals"></div>
     </div>
 
     <div class="section" data-rv-section="videos">
       <div class="section-header">
-        <h2 class="section-title">视频卡片墙</h2>
-        <button class="btn btn-sm" onclick="addVideo()">+ 新增视频</button>
+        <h2 class="section-title collapse-toggle" onclick="toggleCollapse('videos', this)"><span class="arrow">▾</span>视频卡片墙</h2>
+        <button class="btn btn-sm" onclick="event.stopPropagation(); addVideo()">+ 新增视频</button>
       </div>
-      <div class="video-grid" id="video-grid"></div>
+      <div class="video-grid" id="video-grid" data-collapse-body="videos"></div>
     </div>
 
     <div class="section" data-rv-section="pub">
       <div class="section-header">
-        <h2 class="section-title">实际发布月历</h2>
+        <h2 class="section-title collapse-toggle" onclick="toggleCollapse('pub', this)"><span class="arrow">▾</span>实际发布月历</h2>
         <div class="month-nav">
-          <button class="btn btn-sm" onclick="changePubMonth(-1)">‹ 上月</button>
+          <button class="btn btn-sm" onclick="event.stopPropagation(); changePubMonth(-1)">‹ 上月</button>
           <div class="label" id="pub-month-label"></div>
-          <button class="btn btn-sm" onclick="changePubMonth(1)">下月 ›</button>
+          <button class="btn btn-sm" onclick="event.stopPropagation(); changePubMonth(1)">下月 ›</button>
         </div>
       </div>
-      <div class="calendar" id="pub-calendar"></div>
+      <div class="calendar" id="pub-calendar" data-collapse-body="pub"></div>
     </div>
 
     <div class="section" data-rv-section="issues">
       <div class="section-header">
-        <h2 class="section-title">团队近期问题</h2>
-        <button class="btn btn-sm" onclick="addTeamIssue()">+ 新增问题</button>
+        <h2 class="section-title collapse-toggle" onclick="toggleCollapse('issues', this)"><span class="arrow">▾</span>团队近期问题</h2>
+        <button class="btn btn-sm" onclick="event.stopPropagation(); addTeamIssue()">+ 新增问题</button>
       </div>
-      <div id="team-issues"></div>
+      <div data-collapse-body="issues">
+        <div class="issue-filter" id="issue-filter">
+          <button class="active" data-ifilter="all" onclick="setIssueFilter('all')">全部</button>
+          <button data-ifilter="resolved" onclick="setIssueFilter('resolved')">已解决</button>
+          <button data-ifilter="unresolved" onclick="setIssueFilter('unresolved')">未解决</button>
+        </div>
+        <div id="team-issues"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -482,6 +489,14 @@
           <div style="flex:1;"><label style="font-size:12px;color:var(--text-2);">实际表现</label><select id="vd-actual"></select></div>
         </div>
         <div style="margin-top:8px;"><label style="font-size:12px;color:var(--text-2);">评分</label><div id="vd-rating" class="star-rating"></div></div>
+        <div style="margin-top:8px; display:flex; align-items:center; gap:10px;">
+          <label style="font-size:12px;color:var(--text-2);">是否投流</label>
+          <div class="issue-resolved-toggle">
+            <button class="yes" id="vd-ad-yes" onclick="setVideoAd(true)">已投流</button>
+            <button class="no" id="vd-ad-no" onclick="setVideoAd(false)">未投流</button>
+          </div>
+          <input type="text" id="vd-ad-amount" placeholder="投流金额 ¥" style="width:120px; padding:6px 8px; border:1px solid var(--border-strong); border-radius:6px; font-size:12px;">
+        </div>
       </div>
     </div>
     <div class="md-photo-actions">
