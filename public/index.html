@@ -35,6 +35,8 @@
     <button class="tab" data-tab="workflow">三类内容流程</button>
     <button class="tab" data-tab="models">模特预约</button>
     <button class="tab" data-tab="team">项目人员</button>
+    <button class="tab" data-tab="clinic">院内看板</button>
+    <button class="tab" data-tab="review">数据回测</button>
   </div>
 
   <!-- ========== 总览 ========== -->
@@ -178,6 +180,79 @@
         <div style="font-size:12px; color:var(--text-3);">💡 点格子勾选休息 · 点头像名进入"连选模式"</div>
       </div>
       <div class="calendar" id="team-calendar"></div>
+    </div>
+  </div>
+
+  <!-- ========== 院内看板 ========== -->
+  <div class="panel" id="panel-clinic">
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">医生名单</h2>
+        <button class="btn btn-sm btn-ghost" onclick="toggleDoctorList()" id="doctor-toggle-btn">展开 ▾</button>
+      </div>
+      <div id="doctor-list-wrap" style="display:none;">
+        <div id="doctor-list" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">院内时间看板</h2>
+        <div class="month-nav">
+          <button class="btn btn-sm" onclick="changeClinicMonth(-1)">‹ 上月</button>
+          <div class="label" id="clinic-month-label"></div>
+          <button class="btn btn-sm" onclick="changeClinicMonth(1)">下月 ›</button>
+        </div>
+      </div>
+      <div class="legend" style="margin-bottom:12px;">
+        <span><span class="legend-dot" style="background:var(--kb-teal)"></span>场地占用</span>
+        <span><span class="legend-dot" style="background:var(--accent)"></span>在场医生</span>
+      </div>
+      <div class="calendar" id="clinic-calendar"></div>
+    </div>
+  </div>
+
+  <!-- ========== 数据回测 ========== -->
+  <div class="panel" id="panel-review">
+    <div class="tabs sub-tabs" id="review-tabs">
+      <button class="tab active" data-rvtab="all">全部总览</button>
+      <button class="tab" data-rvtab="goals">本月目标</button>
+      <button class="tab" data-rvtab="videos">视频卡片墙</button>
+      <button class="tab" data-rvtab="pub">实际发布月历</button>
+      <button class="tab" data-rvtab="issues">团队问题</button>
+    </div>
+
+    <div class="section" data-rv-section="goals">
+      <div class="section-header"><h2 class="section-title">本月目标</h2></div>
+      <div id="month-goals"></div>
+    </div>
+
+    <div class="section" data-rv-section="videos">
+      <div class="section-header">
+        <h2 class="section-title">视频卡片墙</h2>
+        <button class="btn btn-sm" onclick="addVideo()">+ 新增视频</button>
+      </div>
+      <div class="video-grid" id="video-grid"></div>
+    </div>
+
+    <div class="section" data-rv-section="pub">
+      <div class="section-header">
+        <h2 class="section-title">实际发布月历</h2>
+        <div class="month-nav">
+          <button class="btn btn-sm" onclick="changePubMonth(-1)">‹ 上月</button>
+          <div class="label" id="pub-month-label"></div>
+          <button class="btn btn-sm" onclick="changePubMonth(1)">下月 ›</button>
+        </div>
+      </div>
+      <div class="calendar" id="pub-calendar"></div>
+    </div>
+
+    <div class="section" data-rv-section="issues">
+      <div class="section-header">
+        <h2 class="section-title">团队近期问题</h2>
+        <button class="btn btn-sm" onclick="addTeamIssue()">+ 新增问题</button>
+      </div>
+      <div id="team-issues"></div>
     </div>
   </div>
 </div>
@@ -333,7 +408,7 @@
   background: var(--accent); color: white; padding: 10px 18px;
   border-radius: 24px; font-size: 13px; font-weight: 500;
   box-shadow: 0 4px 14px rgba(0,0,0,0.18);
-  z-index: 1000; align-items: center; gap: 12px;
+  z-index: 1000; display: flex; align-items: center; gap: 12px;
 ">
   <span id="team-range-banner-text">连选模式：点起始日 → 终止日</span>
   <select id="team-range-status" style="background:white; color:var(--text); border:none; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
@@ -369,6 +444,65 @@
       <button class="btn btn-danger" onclick="deleteCurrentTeamMember()">删除该成员</button>
       <div style="flex:1"></div>
       <button class="btn btn-primary" onclick="closeTeamDetail()">完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- =============== Clinic day modal =============== -->
+<div class="modal-bg" id="clinic-day-modal-bg">
+  <div class="modal" style="width: 520px;">
+    <h3 id="clinic-day-title">院内日程</h3>
+    <h4 style="font-size:13px; margin: 12px 0 8px; color: var(--text-2);">在场医生</h4>
+    <div id="clinic-doctor-checklist" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+    <hr class="div">
+    <h4 style="font-size:13px; margin: 0 0 8px; color: var(--text-2);">场地占用</h4>
+    <div id="clinic-event-list"></div>
+    <h4 style="font-size:13px; margin: 16px 0 8px; color: var(--text-2);">新增占用</h4>
+    <div class="form-row"><label>事项</label><input type="text" id="ce-title" placeholder="例如：客户见证拍摄"></div>
+    <div class="form-row"><label>时段</label><input type="text" id="ce-time" placeholder="例如：14:00-17:00"></div>
+    <div class="form-row"><label>场地/厅</label><input type="text" id="ce-room" placeholder="例如：3 号厅"></div>
+    <div class="form-row"><label>备注</label><textarea id="ce-notes"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeClinicDayModal()">完成</button>
+      <button class="btn btn-primary" onclick="saveClinicEvent()">添加占用</button>
+    </div>
+  </div>
+</div>
+
+<!-- =============== Video detail modal =============== -->
+<div class="modal-bg" id="video-detail-bg">
+  <div class="modal" style="width: 640px;">
+    <div style="display:flex; gap: 16px; align-items: flex-start; margin-bottom: 16px;">
+      <div class="video-cover-large" id="vd-cover"></div>
+      <div style="flex:1;">
+        <h3 id="vd-title" style="margin: 0 0 8px;">视频</h3>
+        <div class="form-row" style="margin-bottom:8px;"><label>发布日期</label><input type="date" id="vd-pubdate"></div>
+        <div style="display:flex; gap:12px;">
+          <div style="flex:1;"><label style="font-size:12px;color:var(--text-2);">预测表现</label><select id="vd-predict"></select></div>
+          <div style="flex:1;"><label style="font-size:12px;color:var(--text-2);">实际表现</label><select id="vd-actual"></select></div>
+        </div>
+        <div style="margin-top:8px;"><label style="font-size:12px;color:var(--text-2);">评分</label><div id="vd-rating" class="star-rating"></div></div>
+      </div>
+    </div>
+    <div class="md-photo-actions">
+      <button class="btn btn-sm" onclick="document.getElementById('vd-cover-upload').click()">📷 上传封面</button>
+      <input type="file" id="vd-cover-upload" style="display:none" accept="image/*" onchange="uploadVideoCover(event)">
+      <button class="btn btn-sm" onclick="promptVideoCoverUrl()">🔗 贴封面 URL</button>
+      <button class="btn btn-sm btn-ghost" onclick="clearVideoCover()">清除</button>
+    </div>
+
+    <h4 style="font-size:13px; margin: 16px 0 8px; color: var(--text-2);">各平台数据</h4>
+    <div id="vd-platforms"></div>
+    <button class="btn btn-sm" onclick="addVideoPlatform()" style="margin-top:8px;">+ 增加平台</button>
+
+    <h4 style="font-size:13px; margin: 16px 0 8px; color: var(--text-2);">自定义字段</h4>
+    <div class="md-field-list" id="vd-fields"></div>
+    <button class="btn btn-sm" onclick="addVideoField()" style="margin-top:8px;">+ 增加字段</button>
+
+    <div class="modal-actions">
+      <button class="btn btn-danger" onclick="deleteCurrentVideo()">删除该视频</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-primary" onclick="closeVideoDetail()">完成</button>
     </div>
   </div>
 </div>
