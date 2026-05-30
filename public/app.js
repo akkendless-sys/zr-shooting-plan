@@ -267,22 +267,103 @@ async function loadData() {
   setSyncStatus('加载中…');
   try {
     const res = await fetch('/api/data', { credentials: 'include' });
-    if (res.status === 401) { location.href = '/login.html'; return; }
+    if (res.status === 401) { location.href = '/login.html'; return false; }
     const json = await res.json();
-    if (json.data) {
+
+    // CASE 1: server returned an error (parse failure, corrupt file)
+    if (json && json.error) {
+      showFatalLoadError(`服务器加载数据失败：${json.error}<br><br>这通常是 plan.json 文件损坏导致。<br>请联系管理员从备份恢复，不要在此界面操作（任何编辑都不会保存）。`);
+      return false;
+    }
+
+    // CASE 2: server returned data successfully
+    if (json && json.data) {
       data = mergeData(json.data);
       lastSaveOkTs = json.updated_at || Date.now();
-    } else {
+      setSyncStatus('已同步', 'saved');
+      return true;
+    }
+
+    // CASE 3: server returned {data: null} (truly empty file, no data ever saved)
+    // This is the DANGEROUS case. We must NEVER auto-seed and save here
+    // unless we can prove this is a genuine first-run.
+    // Strategy: ask user explicitly.
+    const isGenuineFirstRun = await confirmGenuineFirstRun();
+    if (isGenuineFirstRun) {
       data = mergeData(defaultData);
       data.events = generateSeedEvents();
       await pushData();
+      setSyncStatus('已同步', 'saved');
+      return true;
+    } else {
+      showFatalLoadError('已暂停以保护你的数据。如果你确实是第一次使用，请刷新页面并选择"是，初始化"。否则请联系管理员从备份恢复。');
+      return false;
     }
-    setSyncStatus('已同步', 'saved');
   } catch (e) {
-    setSyncStatus('加载失败', 'error');
-    data = mergeData(defaultData);
-    data.events = generateSeedEvents();
+    // Network failure or unexpected error. DO NOT seed here either.
+    showFatalLoadError(`无法加载数据：${e.message}<br><br>请检查网络后刷新页面。<br>本次会话不会做任何修改，你之前的数据是安全的。`);
+    return false;
   }
+}
+
+// Show a blocking, full-screen error that prevents any editing
+function showFatalLoadError(htmlMsg) {
+  setSyncStatus('加载失败 · 已暂停', 'error');
+  const overlay = document.createElement('div');
+  overlay.id = 'fatal-load-overlay';
+  overlay.style.cssText = `
+    position: fixed; inset: 0; background: rgba(20,18,15,0.96);
+    z-index: 99999; display: flex; align-items: center; justify-content: center;
+    padding: 40px;
+  `;
+  overlay.innerHTML = `
+    <div style="max-width: 540px; background: white; border-radius: 14px; padding: 32px 36px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+      <div style="font-size: 20px; font-weight: 600; color: #A32D2D; margin-bottom: 12px;">⚠️ 数据加载已暂停</div>
+      <div style="color: #5F5E5A; font-size: 14px; line-height: 1.7; margin-bottom: 24px;">${htmlMsg}</div>
+      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+        <button id="fatal-retry" style="padding: 9px 18px; background: #D85A30; color: white; border: none; border-radius: 8px; font-size: 13px; cursor: pointer;">重新加载</button>
+        <button id="fatal-logout" style="padding: 9px 18px; background: white; color: #1A1A1A; border: 1px solid rgba(0,0,0,0.2); border-radius: 8px; font-size: 13px; cursor: pointer;">退出登录</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('fatal-retry').onclick = () => location.reload();
+  document.getElementById('fatal-logout').onclick = () => { fetch('/api/logout',{method:'POST',credentials:'include'}).then(()=>location.href='/login.html'); };
+}
+
+// Ask the user point-blank: is this really first run?
+function confirmGenuineFirstRun() {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed; inset: 0; background: rgba(20,18,15,0.96);
+      z-index: 99999; display: flex; align-items: center; justify-content: center;
+      padding: 40px;
+    `;
+    overlay.innerHTML = `
+      <div style="max-width: 560px; background: white; border-radius: 14px; padding: 32px 36px;">
+        <div style="font-size: 18px; font-weight: 600; color: #1A1A1A; margin-bottom: 12px;">系统未检测到任何数据</div>
+        <div style="color: #5F5E5A; font-size: 14px; line-height: 1.7; margin-bottom: 8px;">
+          服务器报告 plan.json 为空。这通常发生在：
+        </div>
+        <ul style="color: #5F5E5A; font-size: 13px; line-height: 1.7; margin: 0 0 16px 20px;">
+          <li>✅ 系统首次启动（正常）</li>
+          <li>⚠️ Volume 没挂载好（异常）</li>
+          <li>⚠️ 数据被意外清空（严重）</li>
+        </ul>
+        <div style="background: #FAECE7; color: #993C1D; padding: 12px 14px; border-radius: 8px; font-size: 13px; line-height: 1.6; margin-bottom: 18px;">
+          <strong>如果你以前在这里录入过数据</strong>，点"暂停"并联系管理员检查 Volume 和备份。点"初始化"会用默认种子数据覆盖现状。
+        </div>
+        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+          <button id="fr-init" style="padding: 9px 18px; background: #D85A30; color: white; border: none; border-radius: 8px; font-size: 13px; cursor: pointer;">是，初始化（确认首次使用）</button>
+          <button id="fr-pause" style="padding: 9px 18px; background: white; color: #1A1A1A; border: 1px solid rgba(0,0,0,0.2); border-radius: 8px; font-size: 13px; cursor: pointer;">暂停（保护现有数据）</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById('fr-init').onclick = () => { overlay.remove(); resolve(true); };
+    document.getElementById('fr-pause').onclick = () => { overlay.remove(); resolve(false); };
+  });
 }
 
 async function pushData() {
@@ -1288,6 +1369,11 @@ async function pollRefresh() {
     const res = await fetch('/api/data', { credentials: 'include' });
     if (res.status === 401) { location.href = '/login.html'; return; }
     const json = await res.json();
+    // If server reports an error mid-session, freeze syncs and warn user
+    if (json && json.error) {
+      setSyncStatus('⚠ 服务器异常 · 已停止同步', 'error');
+      return;
+    }
     // Only adopt server data if it is NEWER than our last successful save.
     // This prevents a stale server snapshot from clobbering our work.
     if (json.data && (json.updated_at || 0) > lastSaveOkTs) {
@@ -1335,11 +1421,61 @@ function initAll() {
   renderClinicPanel();
   renderReviewPanel();
   renderCalendarOrGantt();
+  // Daily backup reminder
+  scheduleBackupReminder();
+}
+
+function scheduleBackupReminder() {
+  try {
+    const today = new Date().toDateString();
+    const last = localStorage.getItem('zr_last_backup_prompt');
+    if (last === today) return; // already prompted today
+    // Show reminder 90s after load so it doesn't startle the user on first thing
+    setTimeout(() => {
+      // Check if data is meaningful (not just defaults)
+      const hasMeaningfulData = (data.videos||[]).length > 0
+        || (data.modelPool||[]).length > 0
+        || (data.teamIssues||[]).length > 0
+        || (data.clinicEvents||[]).length > 0
+        || (data.milestones||[]).length > 4; // more than seed
+      if (!hasMeaningfulData) return;
+      const div = document.createElement('div');
+      div.style.cssText = `
+        position: fixed; bottom: 20px; right: 20px;
+        background: white; border: 1px solid rgba(0,0,0,0.12);
+        border-radius: 12px; padding: 14px 18px; max-width: 320px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: 999;
+        font-size: 13px; line-height: 1.6;
+      `;
+      div.innerHTML = `
+        <div style="font-weight:600; margin-bottom:4px;">📥 今日数据备份提醒</div>
+        <div style="color:#5F5E5A; margin-bottom:10px;">建议每天点一次"导出"下载备份。云端单点存储有风险。</div>
+        <div style="display:flex; gap:6px;">
+          <button id="br-export" style="flex:1; padding:6px 10px; background:#D85A30; color:white; border:none; border-radius:6px; font-size:12px; cursor:pointer;">立即导出</button>
+          <button id="br-close" style="padding:6px 10px; background:white; color:#5F5E5A; border:1px solid rgba(0,0,0,0.18); border-radius:6px; font-size:12px; cursor:pointer;">今天已备份</button>
+        </div>
+      `;
+      document.body.appendChild(div);
+      document.getElementById('br-export').onclick = () => {
+        if (typeof exportData === 'function') exportData();
+        localStorage.setItem('zr_last_backup_prompt', today);
+        div.remove();
+      };
+      document.getElementById('br-close').onclick = () => {
+        localStorage.setItem('zr_last_backup_prompt', today);
+        div.remove();
+      };
+    }, 90000);
+  } catch (_) {}
 }
 
 (async function bootstrap() {
-  await loadData();
-  if (!data) return;
+  const ok = await loadData();
+  if (!ok || !data) {
+    // Hide loading spinner so user sees the error overlay clearly
+    document.getElementById('loadingScreen').classList.add('hidden');
+    return;
+  }
   initAll();
   document.getElementById('loadingScreen').classList.add('hidden');
   document.getElementById('appRoot').style.display = '';
