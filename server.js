@@ -14,20 +14,30 @@ const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
+// ---- file-based storage with backup-on-write ----
 function readData() {
   if (!fs.existsSync(DATA_FILE)) return { data: null, updated_at: 0 };
   try {
     const raw = fs.readFileSync(DATA_FILE, 'utf8');
     return JSON.parse(raw);
   } catch (e) {
-    console.error('readData failed:', e);
-    return { data: null, updated_at: 0 };
+    console.error('readData failed (corruption?):', e.message);
+    // SAFETY: if plan.json exists but cannot be parsed, do NOT report empty
+    // (that would trigger client to seed and overwrite). Rename the bad file
+    // and serve a "locked" sentinel that client treats as an error, not empty.
+    try {
+      const badName = `plan.corrupt-${Date.now()}.json`;
+      fs.renameSync(DATA_FILE, path.join(DATA_DIR, badName));
+      console.error('Renamed corrupt file to', badName);
+    } catch (_) {}
+    return { data: null, updated_at: 0, error: 'parse_failed' };
   }
 }
 function writeData(payload) {
   const tmpFile = DATA_FILE + '.tmp';
   fs.writeFileSync(tmpFile, JSON.stringify(payload, null, 2), 'utf8');
   fs.renameSync(tmpFile, DATA_FILE);
+  // Rolling backup (keep last 20)
   try {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupFile = path.join(BACKUP_DIR, `plan-${stamp}.json`);
@@ -41,6 +51,7 @@ function writeData(payload) {
   }
 }
 
+// ---- session token ----
 function makeToken() {
   const exp = Date.now() + 7 * 24 * 60 * 60 * 1000;
   const payload = String(exp);
@@ -61,7 +72,6 @@ const app = express();
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
-// ---- API routes (registered FIRST) ----
 app.post('/api/login', (req, res) => {
   const { password } = req.body || {};
   if (password === PASSWORD) {
@@ -113,16 +123,73 @@ app.get('/api/export', requireAuth, (req, res) => {
   res.send(JSON.stringify(stored, null, 2));
 });
 
-// ---- Root redirect: if not authed, send to login page ----
+// ============ Backup recovery (temporary admin endpoints) ============
+// List all backup files with size + parsed timestamp
+app.get('/api/backups', requireAuth, (req, res) => {
+  try {
+    if (!fs.existsSync(BACKUP_DIR)) return res.json({ ok: true, backups: [] });
+    const files = fs.readdirSync(BACKUP_DIR)
+      .filter(f => f.startsWith('plan-') && f.endsWith('.json'));
+    const list = files.map(name => {
+      const full = path.join(BACKUP_DIR, name);
+      const st = fs.statSync(full);
+      // Try to peek inside for entry counts (cheap because most files small)
+      let counts = {};
+      try {
+        const raw = JSON.parse(fs.readFileSync(full, 'utf8'));
+        const d = raw.data || raw;
+        counts = {
+          videos: (d.videos || []).length,
+          events: (d.events || []).length,
+          modelPool: (d.modelPool || []).length,
+          teamIssues: (d.teamIssues || []).length,
+          clinicEvents: (d.clinicEvents || []).length,
+        };
+      } catch (_) {}
+      return { name, size: st.size, mtime: st.mtime.toISOString(), counts };
+    });
+    // Sort newest first
+    list.sort((a, b) => b.mtime.localeCompare(a.mtime));
+    res.json({ ok: true, backups: list });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Restore from a backup file. Body: { name: 'plan-XXX.json' }
+// IMPORTANT: also backs up current plan.json before restoring (safety net)
+app.post('/api/restore', requireAuth, (req, res) => {
+  const { name } = req.body || {};
+  if (!name || typeof name !== 'string' || !name.startsWith('plan-') || !name.endsWith('.json') || name.includes('/') || name.includes('..')) {
+    return res.status(400).json({ ok: false, error: 'invalid backup name' });
+  }
+  const src = path.join(BACKUP_DIR, name);
+  if (!fs.existsSync(src)) return res.status(404).json({ ok: false, error: 'backup not found' });
+  try {
+    // Save current state as a pre-restore safety backup
+    if (fs.existsSync(DATA_FILE)) {
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      fs.copyFileSync(DATA_FILE, path.join(BACKUP_DIR, `pre-restore-${stamp}.json`));
+    }
+    // Copy backup to current
+    fs.copyFileSync(src, DATA_FILE);
+    const raw = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    res.json({ ok: true, restored: name, updated_at: raw.updated_at || Date.now() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Static
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Redirect / to /login.html if not authed
 app.get('/', (req, res, next) => {
   if (!verifyToken(req.cookies?.zr_session)) {
     return res.redirect('/login.html');
   }
-  // Authed: serve index.html
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  next();
 });
-
-// ---- Static files (login.html, app.js, etc.) ----
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(PORT, () => {
