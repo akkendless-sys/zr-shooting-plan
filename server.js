@@ -160,12 +160,26 @@ app.get('/api/backups', requireAuth, (req, res) => {
 // IMPORTANT: also backs up current plan.json before restoring (safety net)
 app.post('/api/restore', requireAuth, (req, res) => {
   const { name } = req.body || {};
-  if (!name || typeof name !== 'string' || !name.startsWith('plan-') || !name.endsWith('.json') || name.includes('/') || name.includes('..')) {
+  if (!name || typeof name !== 'string' || name.includes('/') || name.includes('..')) {
     return res.status(400).json({ ok: false, error: 'invalid backup name' });
   }
-  const src = path.join(BACKUP_DIR, name);
-  if (!fs.existsSync(src)) return res.status(404).json({ ok: false, error: 'backup not found' });
+  // Allow plan-*.json or any .json file in data dir (for emergency recovery from corrupt files)
+  let src;
+  if (name.startsWith('backups/')) {
+    src = path.join(BACKUP_DIR, name.slice('backups/'.length));
+  } else if (name.endsWith('.json')) {
+    // Could be in BACKUP_DIR or DATA_DIR root
+    const candidate1 = path.join(BACKUP_DIR, name);
+    const candidate2 = path.join(DATA_DIR, name);
+    src = fs.existsSync(candidate1) ? candidate1 : candidate2;
+  } else {
+    return res.status(400).json({ ok: false, error: 'must be .json file' });
+  }
+  if (!fs.existsSync(src)) return res.status(404).json({ ok: false, error: 'backup not found at ' + src });
   try {
+    // Try to parse the source first to make sure it's valid
+    const raw = fs.readFileSync(src, 'utf8');
+    const parsed = JSON.parse(raw);
     // Save current state as a pre-restore safety backup
     if (fs.existsSync(DATA_FILE)) {
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -173,8 +187,64 @@ app.post('/api/restore', requireAuth, (req, res) => {
     }
     // Copy backup to current
     fs.copyFileSync(src, DATA_FILE);
-    const raw = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    res.json({ ok: true, restored: name, updated_at: raw.updated_at || Date.now() });
+    res.json({ ok: true, restored: name, updated_at: parsed.updated_at || Date.now() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// List entire data directory (debug)
+app.get('/api/debug-ls', requireAuth, (req, res) => {
+  try {
+    const items = [];
+    function walk(dir, prefix='') {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const e of entries) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) {
+          items.push({ path: prefix + e.name + '/', type: 'dir' });
+          walk(full, prefix + e.name + '/');
+        } else {
+          const st = fs.statSync(full);
+          items.push({ path: prefix + e.name, size: st.size, mtime: st.mtime.toISOString() });
+        }
+      }
+    }
+    walk(DATA_DIR);
+    res.json({ ok: true, dataDir: DATA_DIR, items });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Read any file under DATA_DIR by path (debug, for recovery)
+app.get('/api/debug-read', requireAuth, (req, res) => {
+  const rel = req.query.path;
+  if (!rel || typeof rel !== 'string' || rel.includes('..')) return res.status(400).json({ ok: false, error: 'invalid path' });
+  const full = path.join(DATA_DIR, rel);
+  if (!full.startsWith(DATA_DIR)) return res.status(400).json({ ok: false, error: 'path escape' });
+  if (!fs.existsSync(full)) return res.status(404).json({ ok: false, error: 'not found' });
+  try {
+    const raw = fs.readFileSync(full, 'utf8');
+    // Try parse
+    let parsed = null, parseError = null;
+    try { parsed = JSON.parse(raw); } catch (e) { parseError = e.message; }
+    res.json({
+      ok: true,
+      size: raw.length,
+      parseError,
+      summary: parsed ? {
+        hasData: !!parsed.data,
+        updated_at: parsed.updated_at,
+        videos: (parsed.data?.videos || parsed.videos || []).length,
+        modelPool: (parsed.data?.modelPool || parsed.modelPool || []).length,
+        teamIssues: (parsed.data?.teamIssues || parsed.teamIssues || []).length,
+        clinicEvents: (parsed.data?.clinicEvents || parsed.clinicEvents || []).length,
+        events: (parsed.data?.events || parsed.events || []).length,
+      } : null,
+      // First 500 chars for inspection (in case of corruption)
+      head: raw.slice(0, 500),
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
